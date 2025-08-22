@@ -7,9 +7,8 @@
 import path from "path";
 import {
   COLOR_PALETTE,
-  FILE_TYPE_COLOR_MAP,
-  FILE_TYPE_MAPPINGS,
-} from "./services/constants.js";
+  FILE_TYPE_MAPPINGS
+} from "./CONF.js";
 
 /**
  * Determines the file type based on the filename extension.
@@ -35,27 +34,75 @@ export function getFileType(filename) {
 }
 
 /**
- * Gets the color for a node based on its depth, max depth, and file type.
- * Uses depth-based color gradients from predefined palettes to create visual hierarchy.
+ * Gets the color for a node based on its second-level directory assignment.
+ * Colors are now consistent within each directory (no depth variation).
+ * Nodes furthest from root get priority for color application.
  *
- * @param {number} depth - The depth level of the node
- * @param {number} maxDepth - The maximum depth in the tree
+ * @param {number} depth - The depth level of the node (0 = root, 1 = first level, etc.)
+ * @param {number} maxDepth - The maximum depth in the tree (used to determine priority)
  * @param {string} [fileType="directory"] - The file type of the node
+ * @param {string} [nodePath=""] - The full path of the node for directory analysis
+ * @param {string} [rootDir=""] - The root directory path
+ * @param {Object} [directoryColorMap={}] - Dynamic directory to single color mapping
  * @returns {string} The hex color code
  */
-export function getColorByDepth(depth, maxDepth, fileType = "directory") {
-  const paletteKey = FILE_TYPE_COLOR_MAP[fileType] || "grey";
-  const palette = COLOR_PALETTE[paletteKey];
+export function getColorByDepth(depth, maxDepth, fileType = "directory", nodePath = "", rootDir = "", directoryColorMap = {}) {
+  let paletteKey = "default";
 
-  const index = Math.min(
-    Math.floor((depth / Math.max(maxDepth, 1)) * (palette.length - 1)),
-    palette.length - 1
-  );
+  // For second-level directories and deeper, determine color based on second-level directory
+  if (depth > 0 && nodePath && rootDir) {
+    const relativePath = path.relative(rootDir, nodePath);
+    const pathParts = relativePath.split(path.sep);
 
-  return palette[index];
+    if (pathParts.length > 0 && pathParts[0] !== '.') {
+      const secondLevelDir = pathParts[0];
+      paletteKey = directoryColorMap[secondLevelDir] || "default";
+    }
+  }
+
+  // Apply color with priority to nodes furthest from origin
+  const color = COLOR_PALETTE[paletteKey] || COLOR_PALETTE.default;
+
+  // Add opacity based on distance from root (furthest nodes get full opacity)
+  const opacity = Math.max(0.4, depth / Math.max(maxDepth, 1));
+
+  // Convert hex to rgba for opacity support
+  const hex = color.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
 /**
+ * Extracts second-level directory names from a node map.
+ * Identifies all unique directory names at depth 1 from the root for dynamic color mapping.
+ * Only includes actual directories, not individual files at the root level.
+ *
+ * @param {Map<string, Object>} nodeMap - Map of file paths to node data
+ * @param {string} rootDir - The root directory path
+ * @returns {string[]} Array of unique second-level directory names
+ */
+export function extractSecondLevelDirectories(nodeMap, rootDir) {
+  const secondLevelDirs = new Set();
+
+  for (const [nodePath, nodeData] of nodeMap.entries()) {
+    const relativePath = path.relative(rootDir, nodePath);
+    const pathParts = relativePath.split(path.sep);
+
+    // Only consider paths with at least one directory level
+    // And only add if it's a directory or if the first part represents a directory containing files
+    if (pathParts.length > 1 && pathParts[0] !== '.' && pathParts[0] !== '') {
+      secondLevelDirs.add(pathParts[0]);
+    } else if (pathParts.length === 1 && nodeData.isDirectory) {
+      // Also include direct child directories
+      secondLevelDirs.add(pathParts[0]);
+    }
+  }
+
+  return Array.from(secondLevelDirs).sort(); // Sort for consistent color assignment
+}/**
  * Converts a flat file path list into a hierarchical tree structure.
  * Builds a tree by parsing relative paths and creating nested directory structures.
  * Calculates maximum depth for the entire tree structure.
@@ -120,7 +167,7 @@ export function buildHierarchicalStructure(nodeMap, rootDir) {
 
 /**
  * Calculates SVG dimensions based on content and aspect ratio.
- * Determines initial canvas size for the visualization based on tree depth and layout requirements.
+ * Determines initial canvas size for the visualization with extra space for half-circle layout.
  *
  * @param {number} maxDepth - Maximum depth of the tree
  * @param {number} aspectRatio - Desired aspect ratio
@@ -129,7 +176,8 @@ export function buildHierarchicalStructure(nodeMap, rootDir) {
  * @returns {Object} Object containing width, height, contentWidth, and contentHeight
  */
 export function calculateSVGDimensions(maxDepth, aspectRatio, margin, defaultWidth) {
-  let width = defaultWidth;
+  // Increase default width for half-circle layout which needs more horizontal space
+  let width = Math.max(defaultWidth, 1800); // Minimum width increased
   let height = width / aspectRatio;
 
   const contentWidth = width - margin.left - margin.right;
@@ -139,36 +187,59 @@ export function calculateSVGDimensions(maxDepth, aspectRatio, margin, defaultWid
 }
 
 /**
- * Adjusts SVG dimensions based on actual content bounds.
- * Ensures the final SVG canvas is large enough to contain all positioned nodes
- * while maintaining the desired aspect ratio.
+ * Calculates optimal SVG dimensions based on node bounds with intelligent spacing optimization.
+ * Automatically adjusts dimensions to minimize whitespace while maintaining readability.
  *
  * @param {Object} bounds - The bounds object containing minX, maxX, minY, maxY
- * @param {Object} margin - Margin configuration
- * @param {number} aspectRatio - Desired aspect ratio
- * @param {number} currentWidth - Current width
- * @param {number} currentHeight - Current height
- * @returns {Object} Adjusted width and height
+ * @param {boolean} includeLegend - Whether to include space for the legend
+ * @returns {Object} Width and height for the SVG canvas
  */
-export function adjustDimensionsForContent(bounds, margin, aspectRatio, currentWidth, currentHeight) {
-  const { minX, maxX, minY, maxY } = bounds;
-  const actualContentWidth = maxY - minY;
-  const actualContentHeight = maxX - minX;
+export function adjustDimensionsForContent(bounds, includeLegend = false) {
+  // Calculate content dimensions from bounds
+  const contentWidth = Math.abs(bounds.maxX - bounds.minX);
+  const contentHeight = Math.abs(bounds.maxY - bounds.minY);
 
-  let width = currentWidth;
-  let height = currentHeight;
+  // Apply smart minimum dimensions based on content
+  const minWidth = Math.max(400, contentWidth * 1.1); // 10% buffer minimum
+  const minHeight = Math.max(300, contentHeight * 1.1);
 
-  if (actualContentWidth + margin.left + margin.right > width) {
-    width = actualContentWidth + margin.left + margin.right;
-    height = width / aspectRatio;
+  // Calculate base dimensions with optimized spacing
+  let width = Math.max(minWidth, contentWidth + 60); // Minimal horizontal padding
+  let height = Math.max(minHeight, contentHeight + 60); // Minimal vertical padding
+
+  // Add legend space only if needed and requested
+  if (includeLegend) {
+    const legendWidth = 280; // Fixed legend width
+    const legendHeight = 150; // Estimated legend height
+
+    // Only add legend space if content is large enough to warrant it
+    if (width > 600) {
+      width += legendWidth;
+    } else {
+      // For smaller graphs, stack legend vertically
+      height += legendHeight;
+    }
   }
 
-  if (actualContentHeight + margin.top + margin.bottom > height) {
-    height = actualContentHeight + margin.top + margin.bottom;
-    width = height * aspectRatio;
-  }
+  // Apply maximum reasonable dimensions to prevent extremely large outputs
+  width = Math.min(width, 4000);
+  height = Math.min(height, 3000);
 
-  return { width, height };
+  // Ensure minimum usable dimensions
+  width = Math.max(width, 500);
+  height = Math.max(height, 400);
+
+  return {
+    width: Math.round(width),
+    height: Math.round(height),
+    // Return optimization info for debugging
+    optimized: {
+      contentWidth: Math.round(contentWidth),
+      contentHeight: Math.round(contentHeight),
+      paddingRatio: Math.round(((width * height) - (contentWidth * contentHeight)) / (width * height) * 100),
+      densityScore: Math.round((contentWidth * contentHeight) / (width * height) * 100)
+    }
+  };
 }
 
 /**

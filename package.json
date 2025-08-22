@@ -26,7 +26,15 @@
   "main": "src/main.js",
   "name": "codebase-visualizer",
   "scripts": {
-    "start": "node bin/cli.js"
+    "start": "node bin/cli.js",
+    "test": "node --test **/*.test.js",
+    "test:const": "echo \"Error: no architectural constructs tests specified\" && exit 1",
+    "test:style": "echo \"Error: no output graph style tests specified\" && exit 1",
+    "test:theme": "echo \"Error: no output diagram theme tests specified\" && exit 1",
+    "test:types": "echo \"Error: no test declaration type annotation tests specified\" && exit 1",
+    "test:state": "c8 -- npm test",
+    "test:units": "echo \"Error: no unit test suites specified\" && exit 1",
+    "test:entry": "echo \"Error: no command line interface entry target tests specified\" && exit 1"
   },
   "type": "module",
   "version": "1.0.0"

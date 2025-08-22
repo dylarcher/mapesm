@@ -1,0 +1,13 @@
+{
+  "name": "circular-structure-demo",
+  "version": "1.0.0",
+  "description": "Demo project showing circular dependencies and how to resolve them",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": [ "circular-dependency", "dependency-injection", "design-patterns" ],
+  "author": "Demo Author",
+  "license": "MIT"
+}

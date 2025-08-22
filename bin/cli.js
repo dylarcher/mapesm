@@ -9,8 +9,8 @@
 import chalk from "chalk";
 import { Command } from "commander";
 import { createRequire } from "module";
+import { DEFAULT_CLI_OPTIONS, LAYOUT_DESCRIPTIONS, LAYOUT_STYLES, MESSAGES } from "../src/CONF.js";
 import { analyzeAndVisualize } from "../src/main.js";
-import { DEFAULT_CLI_OPTIONS, MESSAGES } from "../src/services/constants.js";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json");
@@ -36,12 +36,14 @@ program
  * - Output file option (auto-saves to tmp/ directory)
  * - Directory depth limit option
  * - Hidden files inclusion option
+ * - Layout style selection option
  *
  * @param {string} [path="."] - The path to the directory to analyze
  * @param {Object} options - Command line options
  * @param {string} options.output - Output file name (saved to tmp/ directory)
  * @param {number} options.depth - Maximum directory depth to analyze
  * @param {boolean} options.hidden - Whether to include hidden files and folders
+ * @param {string} options.layout - Layout style for node positioning
  */
 program
   .argument("[path]", "The path to the directory to analyze", ".")
@@ -61,7 +63,35 @@ program
     "Include hidden files and folders (e.g. .git, node_modules)",
     DEFAULT_CLI_OPTIONS.hidden
   )
+  .option(
+    "-l, --layout <style>",
+    `Layout style for node positioning: ${Object.keys(LAYOUT_DESCRIPTIONS).join(', ')}`,
+    (value) => {
+      const validLayouts = Object.values(LAYOUT_STYLES);
+      if (!validLayouts.includes(value)) {
+        console.error(chalk.red(`Invalid layout style: ${value}`));
+        console.error(chalk.yellow(`Valid options: ${validLayouts.join(', ')}`));
+        process.exit(1);
+      }
+      return value;
+    },
+    DEFAULT_CLI_OPTIONS.layout
+  )
+  .option(
+    "--list-layouts",
+    "List all available layout styles with descriptions"
+  )
   .action(async (path, options) => {
+    // Handle layout listing
+    if (options.listLayouts) {
+      console.log(chalk.cyan.bold("\nAvailable Layout Styles:"));
+      Object.entries(LAYOUT_DESCRIPTIONS).forEach(([style, description]) => {
+        console.log(`  ${chalk.green.bold(style.padEnd(12))} ${description}`);
+      });
+      console.log("");
+      return;
+    }
+
     console.log(chalk.green.bold(MESSAGES.INITIALIZING));
     console.log(`${chalk.bold("Target Directory:")} ${path}`);
     console.log(`${chalk.bold("Output File:")} ${options.output}`);
@@ -71,6 +101,7 @@ program
     console.log(
       `${chalk.bold("Include Hidden:")} ${options.hidden ? "Yes" : "No"}`
     );
+    console.log(`${chalk.bold("Layout Style:")} ${options.layout} - ${LAYOUT_DESCRIPTIONS[options.layout]}`);
     console.log("");
 
     try {

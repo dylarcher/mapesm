@@ -1,0 +1,19 @@
+{
+  "name": "hexagonal-architecture-demo",
+  "version": "1.0.0",
+  "description": "Demo project showcasing Hexagonal (Ports & Adapters) Architecture",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0"
+  },
+  "keywords": [ "hexagonal-architecture", "ports-and-adapters", "clean-architecture" ],
+  "author": "Demo Author",
+  "license": "MIT"
+}

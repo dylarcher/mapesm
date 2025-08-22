@@ -1,0 +1,15 @@
+{
+  "name": "layered-architecture-demo",
+  "version": "1.0.0",
+  "description": "Demo project showcasing traditional layered architecture",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
+  "keywords": [ "layered-architecture", "three-tier", "n-tier" ],
+  "author": "Demo Author",
+  "license": "MIT"
+}

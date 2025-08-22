@@ -1,0 +1,12 @@
+{
+  "name": "deeply-nested-project-demo",
+  "version": "1.0.0",
+  "description": "Demo project showcasing deeply nested directory structure",
+  "main": "src/app/core/main/bootstrap/index.js",
+  "scripts": {
+    "start": "node src/app/core/main/bootstrap/index.js"
+  },
+  "keywords": [ "deeply-nested", "complex-structure", "enterprise" ],
+  "author": "Demo Author",
+  "license": "MIT"
+}

@@ -7,13 +7,13 @@
 import chalk from "chalk";
 import { promises as fs } from "fs";
 import path from "path";
-import { MESSAGES } from "./services/constants.js";
+import { MESSAGES } from "./CONF.js";
 import {
   detectCircularDependencies,
   findSourceFiles,
   parseFilesAndBuildGraph,
 } from "./services/consumer.js";
-import { generateSVG } from "./services/generator.js";
+import { generateSVG } from "./services/visualizer.js";
 import {
   ensureOutputDirectory,
   formatCyclePath,

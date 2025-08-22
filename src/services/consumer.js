@@ -7,7 +7,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import ts from "typescript";
-import { DEFAULT_IGNORE, RELEVANT_EXTENSIONS } from "./constants.js";
+import { DEFAULT_IGNORE, RELEVANT_EXTENSIONS } from "../CONF.js";
 
 /**
  * Recursively finds all source files in a directory.

@@ -1,0 +1,19 @@
+{
+  "name": "event-driven-project-demo",
+  "version": "1.0.0",
+  "description": "Demo project showcasing event-driven architecture patterns",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.0"
+  },
+  "keywords": [ "event-driven", "microservices", "pub-sub", "cqrs", "event-sourcing" ],
+  "author": "Demo Author",
+  "license": "MIT"
+}
