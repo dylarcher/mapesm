@@ -1,0 +1,33 @@
+{
+  "name": "widened-structure-demo",
+  "version": "1.0.0",
+  "description": "Demo project showing widened/horizontal architecture pattern with feature-based organization",
+  "main": "app.js",
+  "keywords": [
+    "widened-structure",
+    "horizontal-architecture",
+    "feature-based",
+    "modular",
+    "microservices-like"
+  ],
+  "author": "Demo Author",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node app.js --dev",
+    "demo": "node app.js --demo",
+    "test": "echo 'Feature modules can have individual test scripts'",
+    "lint": "echo 'Each feature can have its own linting rules'"
+  },
+  "dependencies": {
+    "express": "^4.18.0"
+  },
+  "devDependencies": { },
+  "repository": {
+    "type": "git",
+    "url": "Demo repository for widened architecture pattern"
+  }
+}
