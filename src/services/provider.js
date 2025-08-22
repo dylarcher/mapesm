@@ -622,7 +622,7 @@ export function renderLegend(svg, width, height, secondLevelDirs, directoryColor
       .attr("transform", `translate(${SVG_CONFIG.legend.shapeSize / 2}, ${SVG_CONFIG.legend.shapeSize / 2})`);
 
     // Create shape based on file type using the same logic as renderNodeShape
-    const defaultColor = COLOR_PALETTE.default[5]; // Use mid-range default color
+    const defaultColor = COLOR_PALETTE.default; // Use single default color
     renderShapeForLegend(shapeGroup, shapeType, defaultColor);
 
     // Shape description
