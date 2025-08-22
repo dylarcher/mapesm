@@ -8,9 +8,11 @@
 
 import chalk from "chalk";
 import { Command } from "commander";
+import { createRequire } from "module";
 import { analyzeAndVisualize } from "../src/main.js";
 import { DEFAULT_CLI_OPTIONS, MESSAGES } from "../src/services/constants.js";
 
+const require = createRequire(import.meta.url);
 const pkg = require("../package.json");
 const program = new Command();
 
