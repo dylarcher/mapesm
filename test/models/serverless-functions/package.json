@@ -1,0 +1,16 @@
+{
+  "name": "serverless-functions-demo",
+  "version": "1.0.0",
+  "description": "Demo project showcasing serverless function architecture",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "simulate": "node src/simulator.js"
+  },
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
+  "keywords": [ "serverless", "functions", "faas", "lambda", "cloud-functions" ],
+  "author": "Demo Author",
+  "license": "MIT"
+}

@@ -1,0 +1,15 @@
+{
+  "name": "plugin-architecture-demo",
+  "version": "1.0.0",
+  "description": "Demo project showcasing plugin-based architecture",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
+  "keywords": [ "plugin-architecture", "extensible", "modular" ],
+  "author": "Demo Author",
+  "license": "MIT"
+}
