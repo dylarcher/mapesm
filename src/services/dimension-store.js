@@ -180,10 +180,7 @@ export class DimensionStore {
     const category = this._categorizeNode(dimensions);
 
     switch (category) {
-      case NODE_CATEGORIES.CONTEXTUAL:
-        // Text buffer based on text length
-        const textLength = (dimensions.textContent || '').length;
-        return Math.max(OVERLAP_BUFFERS.TEXT_BUFFER, textLength * 2);
+        return Math.max(OVERLAP_BUFFERS.TEXT_BUFFER, textLength * TEXT_LENGTH_MULTIPLIER);
 
       case NODE_CATEGORIES.INDICATORS:
         return OVERLAP_BUFFERS.INDICATOR_SPACING;
