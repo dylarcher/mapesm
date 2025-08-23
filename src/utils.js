@@ -35,8 +35,8 @@ export function getFileType(filename) {
 
 /**
  * Gets the color for a node based on its second-level directory assignment.
- * Colors are now consistent within each directory (no depth variation).
- * Nodes furthest from root get priority for color application.
+ * Colors are applied only to the nodes furthest from root (maximum depth).
+ * All nodes maintain consistent solid colors without hue level variations.
  *
  * @param {number} depth - The depth level of the node (0 = root, 1 = first level, etc.)
  * @param {number} maxDepth - The maximum depth in the tree (used to determine priority)
@@ -47,9 +47,14 @@ export function getFileType(filename) {
  * @returns {string} The hex color code
  */
 export function getColorByDepth(depth, maxDepth, fileType = "directory", nodePath = "", rootDir = "", directoryColorMap = {}) {
+  // Only apply colors to nodes at maximum depth (furthest from origin)
+  if (depth < maxDepth) {
+    return COLOR_PALETTE.default; // Use default color for non-leaf nodes
+  }
+
   let paletteKey = "default";
 
-  // For second-level directories and deeper, determine color based on second-level directory
+  // For nodes at maximum depth, determine color based on second-level directory
   if (depth > 0 && nodePath && rootDir) {
     const relativePath = path.relative(rootDir, nodePath);
     const pathParts = relativePath.split(path.sep);
@@ -60,19 +65,8 @@ export function getColorByDepth(depth, maxDepth, fileType = "directory", nodePat
     }
   }
 
-  // Apply color with priority to nodes furthest from origin
-  const color = COLOR_PALETTE[paletteKey] || COLOR_PALETTE.default;
-
-  // Add opacity based on distance from root (furthest nodes get full opacity)
-  const opacity = Math.max(0.4, depth / Math.max(maxDepth, 1));
-
-  // Convert hex to rgba for opacity support
-  const hex = color.replace('#', '');
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  // Return solid color without any opacity variations
+  return COLOR_PALETTE[paletteKey] || COLOR_PALETTE.default;
 }
 
 /**
