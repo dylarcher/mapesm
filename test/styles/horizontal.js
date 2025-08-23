@@ -22,7 +22,7 @@ export function testHorizontalAlignment() {
       };
       const hierarchy = d3.hierarchy(root);
 
-      positionNodes(hierarchy, 2, 800);
+      positionNodes(hierarchy, 2, 800, 'linear', 'horizontal');
 
       // All children should be at the same y level (horizontal alignment)
       const childrenYPositions = hierarchy.children.map(child => child.y);
@@ -46,7 +46,7 @@ export function testHorizontalAlignment() {
       };
       const hierarchy = d3.hierarchy(root);
 
-      positionNodes(hierarchy, 2, 800);
+      positionNodes(hierarchy, 2, 800, 'linear', 'horizontal');
 
       // Sort children by x position for spacing analysis
       const sortedChildren = hierarchy.children.sort((a, b) => a.x - b.x);
@@ -80,7 +80,7 @@ export function testHorizontalAlignment() {
       };
       const hierarchy = d3.hierarchy(root);
 
-      const bounds = positionNodes(hierarchy, 2, 800);
+      const bounds = positionNodes(hierarchy, 2, 800, 'linear', 'horizontal');
 
       // Verify that bounds encompass all horizontal positions
       const allXPositions = hierarchy.descendants().map(node => node.x);
@@ -108,7 +108,7 @@ export function testHorizontalAlignment() {
       };
       const hierarchy = d3.hierarchy(root);
 
-      positionNodes(hierarchy, 2, 800);
+      positionNodes(hierarchy, 2, 800, 'linear', 'horizontal');
 
       // Check horizontal distribution balance
       const childXPositions = hierarchy.children.map(child => child.x).sort((a, b) => a - b);
@@ -140,8 +140,8 @@ export function testHorizontalScaling() {
       const narrowHierarchy = d3.hierarchy(createHierarchy());
       const wideHierarchy = d3.hierarchy(createHierarchy());
 
-      const narrowBounds = positionNodes(narrowHierarchy, 2, 400);  // Narrow canvas
-      const wideBounds = positionNodes(wideHierarchy, 2, 1200);     // Wide canvas
+      const narrowBounds = positionNodes(narrowHierarchy, 2, 400, 'linear', 'horizontal');  // Narrow canvas
+      const wideBounds = positionNodes(wideHierarchy, 2, 1200, 'linear', 'horizontal');     // Wide canvas
 
       // Wide canvas should allow for more horizontal spread
       const narrowSpan = narrowBounds.maxX - narrowBounds.minX;
@@ -169,8 +169,8 @@ export function testHorizontalScaling() {
         children: Array.from({ length: 8 }, (_, i) => ({ name: `node_${i}`, children: [] }))
       });
 
-      const smallBounds = positionNodes(smallSet, 2, 800);
-      const largeBounds = positionNodes(largeSet, 2, 800);
+      const smallBounds = positionNodes(smallSet, 2, 800, 'linear', 'horizontal');
+      const largeBounds = positionNodes(largeSet, 2, 800, 'linear', 'horizontal');
 
       // Large set should use more horizontal space efficiently
       const smallSpan = smallBounds.maxX - smallBounds.minX;

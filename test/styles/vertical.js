@@ -25,7 +25,7 @@ export function testVerticalAlignment() {
       };
       const hierarchy = d3.hierarchy(root);
 
-      positionNodes(hierarchy, 3, 800);
+      positionNodes(hierarchy, 3, 800, 'linear', 'vertical');
 
       // Each depth level should have progressively larger y values
       const topY = hierarchy.y;                    // depth 0
@@ -64,7 +64,7 @@ export function testVerticalAlignment() {
       };
       const hierarchy = d3.hierarchy(root);
 
-      positionNodes(hierarchy, 3, 800);
+      positionNodes(hierarchy, 3, 800, 'linear', 'vertical');
 
       // Group nodes by depth
       const nodesByDepth = new Map();
@@ -111,7 +111,7 @@ export function testVerticalAlignment() {
       };
       const hierarchy = d3.hierarchy(root);
 
-      positionNodes(hierarchy, 4, 800);
+      positionNodes(hierarchy, 4, 800, 'linear', 'vertical');
 
       // All nodes in the chain should have similar x coordinates (vertical alignment)
       const xPositions = [];
@@ -154,7 +154,7 @@ export function testVerticalAlignment() {
       };
       const hierarchy = d3.hierarchy(root);
 
-      const bounds = positionNodes(hierarchy, 5, 800);
+      const bounds = positionNodes(hierarchy, 5, 800, 'linear', 'vertical');
 
       // Verify vertical bounds encompass all nodes
       const allYPositions = hierarchy.descendants().map(node => node.y);
@@ -202,8 +202,8 @@ export function testVerticalScaling() {
         ]
       });
 
-      const shallowBounds = positionNodes(shallowHierarchy, 2, 800);
-      const deepBounds = positionNodes(deepHierarchy, 5, 800);
+      const shallowBounds = positionNodes(shallowHierarchy, 2, 800, 'linear', 'vertical');
+      const deepBounds = positionNodes(deepHierarchy, 5, 800, 'linear', 'vertical');
 
       // Deep hierarchy should use more vertical space
       const shallowHeight = shallowBounds.maxY - shallowBounds.minY;
@@ -225,8 +225,8 @@ export function testVerticalScaling() {
       const mediumChain = d3.hierarchy(createChain(3));
       const longChain = d3.hierarchy(createChain(6));
 
-      positionNodes(mediumChain, 4, 800);
-      positionNodes(longChain, 7, 800);
+      positionNodes(mediumChain, 4, 800, 'linear', 'vertical');
+      positionNodes(longChain, 7, 800, 'linear', 'vertical');
 
       // Calculate average vertical step size
       const getMediumSteps = () => {
@@ -289,7 +289,7 @@ export function testVerticalScaling() {
       };
       const hierarchy = d3.hierarchy(root);
 
-      positionNodes(hierarchy, 4, 800);
+      positionNodes(hierarchy, 4, 800, 'linear', 'vertical');
 
       // Both branches should start at the same level
       const shallowBranch = hierarchy.children[0];
