@@ -20,10 +20,14 @@ import { getColorByDepth } from "../utils.js";
 function calculateOptimalBounds(hierarchy) {
   if (!hierarchy) return { minX: 0, maxX: 100, minY: 0, maxY: 100 };
 
-  // Collect all node positions
+  // Collect all node positions using the correct coordinate mapping
+  // Note: nodes are rendered as translate(d.y, d.x), so we need to map accordingly
   const positions = [];
   hierarchy.each((d) => {
-    positions.push({ x: d.x, y: d.y });
+    positions.push({
+      x: d.y,  // d.y is used as x-coordinate in rendering
+      y: d.x   // d.x is used as y-coordinate in rendering
+    });
   });
 
   if (positions.length === 0) return { minX: 0, maxX: 100, minY: 0, maxY: 100 };
@@ -34,12 +38,15 @@ function calculateOptimalBounds(hierarchy) {
   let minY = Math.min(...positions.map(p => p.y));
   let maxY = Math.max(...positions.map(p => p.y));
 
-  // Add node radius to bounds
+  // Add buffer for node radius AND text labels (text can extend quite far)
   const nodeBuffer = SVG_CONFIG.nodeRadius * 2;
-  minX -= nodeBuffer;
-  maxX += nodeBuffer;
-  minY -= nodeBuffer;
-  maxY += nodeBuffer;
+  const textBuffer = 100; // Additional buffer for text labels
+  const totalBuffer = nodeBuffer + textBuffer;
+
+  minX -= totalBuffer;
+  maxX += totalBuffer;
+  minY -= totalBuffer;
+  maxY += totalBuffer;
 
   // Intelligent whitespace detection and consolidation
   const currentWidth = maxX - minX;
@@ -54,6 +61,9 @@ function calculateOptimalBounds(hierarchy) {
   const minDensity = 0.001; // Nodes per square pixel
   const maxWhitespaceRatio = 0.7; // Maximum allowed empty space ratio
 
+  // Temporarily disable consolidation to ensure nodes aren't cut off
+  // TODO: Re-enable with better logic later
+  /*
   if (density < minDensity && area > 10000) {
     // Excessive whitespace detected - consolidate bounds
     const targetDensity = minDensity * 1.5;
@@ -73,9 +83,10 @@ function calculateOptimalBounds(hierarchy) {
     minY = centerY - halfHeight;
     maxY = centerY + halfHeight;
   }
+  */
 
-  // Apply minimal padding for final output
-  const finalPadding = 30; // Minimal padding around the entire graph
+  // Apply generous padding for final output to ensure no clipping
+  const finalPadding = 60; // Increased padding to prevent any clipping
 
   return {
     minX: minX - finalPadding,
@@ -550,7 +561,7 @@ export function renderNodes(g, hierarchy, maxDepth, rootDir = "", directoryColor
 export function renderLegend(svg, width, height, secondLevelDirs, directoryColorMap) {
   const legend = svg.append("g")
     .attr("class", "legend")
-    .attr("transform", `translate(${width - SVG_CONFIG.margin.right + SVG_CONFIG.legend.x}, ${SVG_CONFIG.legend.y})`);
+    .attr("transform", `translate(24, 24)`); // Position in top-left with 24px margin
 
   let yOffset = 0;
 
