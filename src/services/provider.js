@@ -7,12 +7,14 @@
 import * as d3 from "d3";
 import { JSDOM } from "jsdom";
 import xmlserializer from "xmlserializer";
-import { COLOR_PALETTE, SHAPE_LEGEND, SVG_CONFIG, SVG_SHAPES, getSVGStyles } from "../CONF.js";
+import { COLOR_PALETTE, getSVGStyles, SHAPE_LEGEND, SVG_CONFIG, SVG_SHAPES } from "../CONF.js";
 import { getFlowBasedColor, isServiceFile } from "../utils.js";
+import { dimensionStore, NODE_CATEGORIES } from "./dimension-store.js";
 
 /**
  * Calculates optimal bounds for the node graph with intelligent whitespace management.
  * Analyzes node distribution and consolidates excessive spacing while maintaining readability.
+ * Ensures proper spacing constraints are met.
  *
  * @param {Object} hierarchy - D3 hierarchy object
  * @returns {Object} Optimal bounds with minimal padding
@@ -20,23 +22,51 @@ import { getFlowBasedColor, isServiceFile } from "../utils.js";
 function calculateOptimalBounds(hierarchy) {
   if (!hierarchy) return { minX: 320, maxX: 420, minY: 0, maxY: 100 }; // Ensure minX is always >= 320
 
-  // Collect all node positions using the correct coordinate mapping
+  // Collect all node positions and calculate text extents using the correct coordinate mapping
   // Note: nodes are rendered as translate(d.y, d.x), so we need to map accordingly
   const positions = [];
+  const textExtents = [];
+
   hierarchy.each((d) => {
-    positions.push({
-      x: d.y,  // d.y is used as x-coordinate in rendering
-      y: d.x   // d.x is used as y-coordinate in rendering
+    const nodeX = d.y;  // d.y is used as x-coordinate in rendering
+    const nodeY = d.x;  // d.x is used as y-coordinate in rendering
+
+    positions.push({ x: nodeX, y: nodeY });
+
+    // Calculate text positioning and extents
+    const textWidth = (d.data.name.length * 7); // Approximate text width
+    const textHeight = 14; // Approximate text height
+    const textX = nodeX + (d.children ? -SVG_CONFIG.nodeOffset - textWidth : SVG_CONFIG.nodeOffset);
+    const textY = nodeY;
+
+    // Text bounds with 18px buffer
+    textExtents.push({
+      minX: textX - 18, // 18px buffer around text
+      maxX: textX + textWidth + 18,
+      minY: textY - textHeight / 2 - 18,
+      maxY: textY + textHeight / 2 + 18
     });
   });
 
   if (positions.length === 0) return { minX: 320, maxX: 420, minY: 0, maxY: 100 }; // Ensure minX is always >= 320
 
-  // Calculate raw bounds
-  let minX = Math.min(...positions.map(p => p.x));
-  let maxX = Math.max(...positions.map(p => p.x));
-  let minY = Math.min(...positions.map(p => p.y));
-  let maxY = Math.max(...positions.map(p => p.y));
+  // Calculate bounds including both nodes and text with buffers
+  let minX = Math.min(
+    ...positions.map(p => p.x - SVG_CONFIG.nodeRadius),
+    ...textExtents.map(t => t.minX)
+  );
+  let maxX = Math.max(
+    ...positions.map(p => p.x + SVG_CONFIG.nodeRadius),
+    ...textExtents.map(t => t.maxX)
+  );
+  let minY = Math.min(
+    ...positions.map(p => p.y - SVG_CONFIG.nodeRadius),
+    ...textExtents.map(t => t.minY)
+  );
+  let maxY = Math.max(
+    ...positions.map(p => p.y + SVG_CONFIG.nodeRadius),
+    ...textExtents.map(t => t.maxY)
+  );
 
   // CRITICAL: Ensure content never overlaps with legend area (0-320px on x-axis)
   const legendSpaceWidth = 320; // Reserve 320px for legend space (280px + 40px padding)
@@ -46,62 +76,13 @@ function calculateOptimalBounds(hierarchy) {
     maxX += shift;
   }
 
-  // Add buffer for node radius AND text labels (text can extend quite far)
-  const nodeBuffer = SVG_CONFIG.nodeRadius * 2;
-  const textBuffer = 100; // Additional buffer for text labels
-  const totalBuffer = nodeBuffer + textBuffer;
-
-  minX -= totalBuffer;
-  maxX += totalBuffer;
-  minY -= totalBuffer;
-  maxY += totalBuffer;
-
-  // Ensure minX is never less than legend space after buffers
-  minX = Math.max(minX, 0); // Allow some overlap with buffers, but ensure content starts at 0 minimum
-
-  // Intelligent whitespace detection and consolidation
-  const currentWidth = maxX - minX;
-  const currentHeight = maxY - minY;
-
-  // Analyze node density to determine if consolidation is needed
-  const nodeCount = positions.length;
-  const area = currentWidth * currentHeight;
-  const density = nodeCount / area;
-
-  // Define thresholds for excessive whitespace
-  const minDensity = 0.001; // Nodes per square pixel
-  const maxWhitespaceRatio = 0.7; // Maximum allowed empty space ratio
-
-  // Temporarily disable consolidation to ensure nodes aren't cut off
-  // TODO: Re-enable with better logic later
-  /*
-  if (density < minDensity && area > 10000) {
-    // Excessive whitespace detected - consolidate bounds
-    const targetDensity = minDensity * 1.5;
-    const targetArea = nodeCount / targetDensity;
-    const scaleFactor = Math.sqrt(targetArea / area);
-
-    // Apply gentle consolidation to maintain readability
-    const consolidationFactor = Math.max(0.7, Math.min(1.0, scaleFactor));
-
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    const halfWidth = (currentWidth * consolidationFactor) / 2;
-    const halfHeight = (currentHeight * consolidationFactor) / 2;
-
-    minX = centerX - halfWidth;
-    maxX = centerX + halfWidth;
-    minY = centerY - halfHeight;
-    maxY = centerY + halfHeight;
-  }
-  */
-
-  // Apply generous padding for final output to ensure no clipping
-  const finalPadding = 60; // Increased padding to prevent any clipping
+  // Add additional buffer for markers (12px from text as specified)
+  const markerBuffer = 12;
+  const finalPadding = 40; // Reduced padding since we already account for text buffers
 
   return {
-    minX: minX - finalPadding,
-    maxX: maxX + finalPadding,
+    minX: Math.max(minX - finalPadding, 0),
+    maxX: maxX + finalPadding + markerBuffer,
     minY: minY - finalPadding,
     maxY: maxY + finalPadding
   };
@@ -146,21 +127,54 @@ const LAYOUT_ALGORITHMS = {
    */
   auto: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
     const totalNodes = hierarchy.descendants().length;
+    const leafNodes = hierarchy.leaves().length;
     const aspectRatio = contentWidth / (maxDepth * 100);
+    const branchingFactor = totalNodes / Math.max(maxDepth, 1);
 
-    // Choose layout based on graph characteristics
-    if (totalNodes <= 10) return LAYOUT_ALGORITHMS.tree(hierarchy, maxDepth, contentWidth, direction);
-    if (aspectRatio > 2) return LAYOUT_ALGORITHMS.linear(hierarchy, maxDepth, contentWidth, direction);
-    if (maxDepth > 5) return LAYOUT_ALGORITHMS.circular(hierarchy, maxDepth, contentWidth, direction);
-    return LAYOUT_ALGORITHMS.diagonal(hierarchy, maxDepth, contentWidth, direction);
+    console.log(`Auto layout analysis: nodes=${totalNodes}, depth=${maxDepth}, branching=${branchingFactor.toFixed(2)}, aspect=${aspectRatio.toFixed(2)}`);
+
+    // Intelligent layout selection based on graph characteristics
+    if (totalNodes <= 8) {
+      console.log('Selected: Linear layout for small graphs');
+      return LAYOUT_ALGORITHMS.linear(hierarchy, maxDepth, contentWidth, direction);
+    }
+
+    if (maxDepth <= 2 && totalNodes <= 20) {
+      console.log('Selected: Grid layout for shallow, small graphs');
+      return LAYOUT_ALGORITHMS.grid(hierarchy, maxDepth, contentWidth, direction);
+    }
+
+    if (branchingFactor > 8 && maxDepth <= 4) {
+      console.log('Selected: Circular layout for high branching factor');
+      return LAYOUT_ALGORITHMS.circular(hierarchy, maxDepth, contentWidth, direction);
+    }
+
+    if (aspectRatio > 3) {
+      console.log('Selected: Linear layout for wide aspect ratios');
+      return LAYOUT_ALGORITHMS.linear(hierarchy, maxDepth, contentWidth, direction);
+    }
+
+    if (maxDepth > 6) {
+      console.log('Selected: Diagonal layout for deep hierarchies');
+      return LAYOUT_ALGORITHMS.diagonal(hierarchy, maxDepth, contentWidth, direction);
+    }
+
+    if (leafNodes / totalNodes > 0.7) {
+      console.log('Selected: Tree layout for leaf-heavy structures');
+      return LAYOUT_ALGORITHMS.tree(hierarchy, maxDepth, contentWidth, direction);
+    }
+
+    console.log('Selected: Tree layout as default');
+    return LAYOUT_ALGORITHMS.tree(hierarchy, maxDepth, contentWidth, direction);
   },
 
   /**
-   * Circular/half-circle layout - nodes arranged in concentric arcs
+   * Circular/half-circle layout - nodes arranged in concentric arcs with improved spacing
    */
   circular: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
-    const legendPadding = 320; // Left padding to avoid legend overlap
-    const levelWidth = Math.max(contentWidth / Math.max(maxDepth, 1), 200);
+    const legendPadding = 340; // Increased to ensure no overlap with legend
+    const minLevelWidth = 200; // Minimum width per level
+    const levelWidth = Math.max(contentWidth / Math.max(maxDepth, 1), minLevelWidth);
     const nodesByLevel = new Map();
 
     hierarchy.each((d) => {
@@ -170,37 +184,39 @@ const LAYOUT_ALGORITHMS = {
 
     nodesByLevel.forEach((nodes, level) => {
       if (direction === 'vertical') {
-        // Vertical circular - grow downward
-        const baseX = level * levelWidth;
+        // Vertical circular - grow downward with better arc distribution
+        const baseX = legendPadding + level * levelWidth;
         if (nodes.length === 1) {
           nodes[0].x = baseX;
-          nodes[0].y = legendPadding;
+          nodes[0].y = 100;
         } else {
-          const radius = Math.max(120, nodes.length * 20);
-          const angleStep = Math.PI / Math.max(nodes.length - 1, 1);
-          const startAngle = 0;
+          const radius = Math.max(100, nodes.length * 40);
+          const arcSpan = Math.min(Math.PI * 0.8, nodes.length * 0.4); // Better arc distribution
+          const angleStep = arcSpan / Math.max(nodes.length - 1, 1);
+          const startAngle = -arcSpan / 2;
 
           nodes.forEach((node, i) => {
             const angle = startAngle + (i * angleStep);
-            node.x = baseX + radius * Math.cos(angle);
-            node.y = legendPadding + radius * (0.4 + 0.6 * Math.abs(Math.sin(angle)));
+            node.x = baseX + radius * Math.sin(angle);
+            node.y = 100 + radius * (1 + Math.cos(angle)) / 2;
           });
         }
       } else {
-        // Horizontal circular - grow rightward
-        const baseY = legendPadding + level * levelWidth;
+        // Horizontal circular - grow rightward with improved positioning
+        const baseY = 100 + level * (levelWidth * 0.6);
         if (nodes.length === 1) {
-          nodes[0].x = 0;
+          nodes[0].x = legendPadding;
           nodes[0].y = baseY;
         } else {
-          const radius = Math.max(120, nodes.length * 20);
-          const angleStep = Math.PI / Math.max(nodes.length - 1, 1);
-          const startAngle = -Math.PI / 2;
+          const radius = Math.max(100, nodes.length * 40);
+          const arcSpan = Math.min(Math.PI * 0.8, nodes.length * 0.4);
+          const angleStep = arcSpan / Math.max(nodes.length - 1, 1);
+          const startAngle = -Math.PI / 2 - arcSpan / 2;
 
           nodes.forEach((node, i) => {
             const angle = startAngle + (i * angleStep);
-            node.x = radius * Math.sin(angle);
-            node.y = baseY + radius * (0.4 + 0.6 * Math.abs(Math.cos(angle)));
+            node.x = legendPadding + radius * (1 + Math.sin(angle)) / 2;
+            node.y = baseY + radius * Math.cos(angle) * 0.7; // Flatten the arc slightly
           });
         }
       }
@@ -210,13 +226,14 @@ const LAYOUT_ALGORITHMS = {
   },
 
   /**
-   * Diagonal layout - staggered positioning with indentation
+   * Diagonal layout - staggered positioning with adaptive indentation
    */
   diagonal: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
-    const legendPadding = 320; // Left padding to avoid legend overlap
-    const levelWidth = contentWidth / Math.max(maxDepth, 1);
-    const levelHeight = 80;
-    const indentAmount = 60;
+    const legendPadding = 340;
+    const minLevelWidth = 150;
+    const levelWidth = Math.max(contentWidth / Math.max(maxDepth, 1), minLevelWidth);
+    const levelHeight = Math.max(80, 500 / Math.max(maxDepth, 1)); // Better vertical distribution
+    const indentAmount = Math.max(60, levelWidth * 0.4); // More pronounced indent
 
     const nodesByLevel = new Map();
     hierarchy.each((d) => {
@@ -226,22 +243,22 @@ const LAYOUT_ALGORITHMS = {
 
     nodesByLevel.forEach((nodes, level) => {
       if (direction === 'vertical') {
-      // Vertical diagonal - indent each level to the right, stack vertically
-        const xOffset = level * indentAmount;
-        const yBase = legendPadding + level * levelHeight;
+        const xOffset = legendPadding + level * indentAmount;
+        const yBase = 100 + level * levelHeight;
+        const nodeSpacing = Math.max(50, levelHeight / Math.max(nodes.length, 1));
 
         nodes.forEach((node, i) => {
-          node.x = xOffset + (i * 30);
-          node.y = yBase + (i * 40);
+          node.x = xOffset + (i * nodeSpacing * 0.3);
+          node.y = yBase + (i * nodeSpacing);
         });
       } else {
-        // Horizontal diagonal - indent each level down, spread horizontally
-        const xOffset = level * indentAmount;
-        const yBase = legendPadding + level * levelHeight;
+        const xOffset = legendPadding + level * indentAmount;
+        const yBase = 100 + level * levelHeight;
+        const nodeSpacing = Math.max(60, levelWidth / Math.max(nodes.length, 1));
 
         nodes.forEach((node, i) => {
-          node.x = xOffset + (i * 40);
-          node.y = yBase + (i * 30);
+          node.x = xOffset + (i * nodeSpacing * 0.8);
+          node.y = yBase + (i * nodeSpacing * 0.4); // Gentle diagonal offset
         });
       }
     });
@@ -250,31 +267,31 @@ const LAYOUT_ALGORITHMS = {
   },
 
   /**
-   * Linear layout - nodes in straight progression using direction
+   * Linear layout - nodes in optimized progression
    */
   linear: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
-    const legendPadding = 320; // Left padding to avoid legend overlap
+    const legendPadding = 340;
+    const nodes = hierarchy.descendants();
+    const minSpacing = 80;
+    const spacing = Math.max(minSpacing, contentWidth / Math.max(nodes.length, 1));
 
     if (direction === 'horizontal') {
-      // Horizontal linear layout - nodes flow left to right
+      // Horizontal linear with depth-based vertical offset
       let currentX = legendPadding;
-      const centerY = 0;
 
-      hierarchy.each(d => {
+      nodes.forEach((d, i) => {
         d.x = currentX;
-        d.y = centerY + (Math.random() - 0.5) * 100; // Add slight vertical variation
-        currentX += SVG_CONFIG.levelHeight * 2;
+        d.y = 100 + d.depth * 60 + (Math.sin(i * 0.3) * 15); // Subtle wave pattern
+        currentX += spacing;
       });
     } else {
-      // Vertical linear layout - TEMPORARILY DISABLED
-      // Default to horizontal for now
-      let currentX = legendPadding;
-      const centerY = 0;
+      // Vertical linear
+      let currentY = 100;
 
-      hierarchy.each(d => {
-        d.x = currentX;
-        d.y = centerY + (Math.random() - 0.5) * 100;
-        currentX += SVG_CONFIG.levelHeight * 2;
+      nodes.forEach((d, i) => {
+        d.x = legendPadding + d.depth * spacing * 0.4;
+        d.y = currentY;
+        currentY += spacing * 0.9;
       });
     }
 
@@ -282,58 +299,84 @@ const LAYOUT_ALGORITHMS = {
   },
 
   /**
-   * Tree layout - traditional hierarchical tree with direction support
+   * Tree layout - enhanced traditional hierarchical tree
    */
   tree: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
-    const legendPadding = 320; // Left padding to avoid legend overlap
+    const legendPadding = 340;
+
+    // Use more compact tree dimensions to prevent excessive height
+    const treeWidth = Math.max(contentWidth * 0.8, 600);
+    const treeHeight = Math.max(maxDepth * 100, 300); // Reduced height multiplier
 
     if (direction === 'vertical') {
-      // Vertical tree layout
-      const treeLayout = d3.tree().size([contentWidth, maxDepth * 100]);
+      const treeLayout = d3.tree().size([treeWidth, treeHeight]);
       treeLayout(hierarchy);
 
       hierarchy.each((d) => {
-        // Keep x and y as-is for vertical layout, just add legend padding
+        d.x = d.x; // Keep original x positioning
         d.y = d.y + legendPadding;
       });
     } else {
-      // Horizontal tree layout
-      const treeLayout = d3.tree().size([contentWidth, maxDepth * 100]);
+      const treeLayout = d3.tree().size([treeHeight, treeWidth]);
       treeLayout(hierarchy);
 
-      // Swap x and y for horizontal tree and add legend padding
       hierarchy.each((d) => {
         const temp = d.x;
         d.x = d.y;
-        d.y = temp + legendPadding;
+        d.y = temp + 100; // Offset from top
       });
+
+      // Ensure tree doesn't start too close to legend
+      const minX = legendPadding;
+      let currentMinX = Infinity;
+      hierarchy.each((d) => {
+        if (d.x < currentMinX) currentMinX = d.x;
+      });
+
+      if (currentMinX < minX) {
+        const shift = minX - currentMinX;
+        hierarchy.each((d) => {
+          d.x += shift;
+        });
+      }
     }
 
     return calculateOptimalBounds(hierarchy);
   },
 
   /**
-   * Grid layout - organized in regular grid pattern with direction support
+   * Grid layout - optimized grid with better distribution
    */
   grid: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
-    const legendPadding = 320; // Left padding to avoid legend overlap
+    const legendPadding = 340;
     const descendants = hierarchy.descendants();
-    const gridSize = Math.ceil(Math.sqrt(descendants.length));
-    const cellSize = Math.min(contentWidth / gridSize, 100);
+    const totalNodes = descendants.length;
+
+    // Calculate optimal grid dimensions with better aspect ratio control
+    const targetAspectRatio = 16 / 9; // Target aspect ratio
+    let cols = Math.ceil(Math.sqrt(totalNodes * targetAspectRatio));
+    let rows = Math.ceil(totalNodes / cols);
+
+    // Adjust for better distribution
+    if (cols * (rows - 1) >= totalNodes) rows--;
+
+    // Ensure minimum spacing for readability
+    const minCellWidth = 120; // Increased minimum cell width
+    const minCellHeight = 100; // Increased minimum cell height
+    const cellWidth = Math.max(minCellWidth, contentWidth / cols);
+    const cellHeight = Math.max(minCellHeight, 500 / rows);
 
     descendants.forEach((node, i) => {
       if (direction === 'vertical') {
-        // Vertical grid - fill columns first (top to bottom, then left to right)
-        const col = Math.floor(i / gridSize);
-        const row = i % gridSize;
-        node.x = col * cellSize;
-        node.y = legendPadding + row * cellSize;
+        const col = Math.floor(i / rows);
+        const row = i % rows;
+        node.x = legendPadding + col * cellWidth;
+        node.y = 100 + row * cellHeight;
       } else {
-      // Horizontal grid - fill rows first (left to right, then top to bottom)
-        const row = Math.floor(i / gridSize);
-        const col = i % gridSize;
-        node.x = col * cellSize;
-        node.y = legendPadding + row * cellSize;
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        node.x = legendPadding + col * cellWidth;
+        node.y = 100 + row * cellHeight;
       }
     });
 
@@ -342,17 +385,75 @@ const LAYOUT_ALGORITHMS = {
 };
 
 /**
- * Positions nodes using the specified layout algorithm.
+ * Positions nodes using the specified layout algorithm with dimension store integration.
+ * Enforces spacing constraints: 18px buffer around text, 12px marker-to-text spacing.
  *
  * @param {Object} hierarchy - D3 hierarchy object
  * @param {number} maxDepth - Maximum depth of the tree
  * @param {number} contentWidth - Available content width
  * @param {string} layoutStyle - Layout algorithm to use
+ * @param {string} direction - Layout direction
  * @returns {Object} Bounds of the positioned nodes
  */
 export function positionNodes(hierarchy, maxDepth, contentWidth, layoutStyle = 'auto', direction = 'horizontal') {
+  // Clear previous positioning data
+  dimensionStore.clear();
+
   const algorithm = LAYOUT_ALGORITHMS[layoutStyle] || LAYOUT_ALGORITHMS.auto;
-  return algorithm(hierarchy, maxDepth, contentWidth, direction);
+  const bounds = algorithm(hierarchy, maxDepth, contentWidth, direction);
+
+  // Register nodes with dimension store for overlap prevention
+  hierarchy.each((d) => {
+    const nodeCategory = d.data.isDirectory ? NODE_CATEGORIES.PRESENTATIONAL : NODE_CATEGORIES.INDICATORS;
+
+    // Register the node shape/marker with proper positioning
+    dimensionStore.setNodeDimensions(`node-${d.data.path}`, {
+      x: d.y,
+      y: d.x,
+      width: SVG_CONFIG.nodeRadius * 2,
+      height: SVG_CONFIG.nodeRadius * 2,
+      category: nodeCategory,
+      shape: d.data.fileType,
+      nodeType: 'shape',
+      path: d.data.path,
+      isDirectory: d.data.isDirectory,
+      buffer: SVG_CONFIG.nodeRadius + 2 // Small buffer around markers
+    });
+
+    // Register the text label separately with enforced spacing
+    const textWidth = (d.data.name.length * 7); // Approximate text width
+    const textHeight = 14; // Approximate text height
+    const markerOffset = SVG_CONFIG.nodeRadius + 12; // 12px spacing from marker to text
+    const textX = d.y + (d.children ? -markerOffset - textWidth : markerOffset);
+
+    dimensionStore.setNodeDimensions(`text-${d.data.path}`, {
+      x: textX + textWidth / 2, // Center of text for positioning calculations
+      y: d.x,
+      width: textWidth,
+      height: textHeight,
+      category: NODE_CATEGORIES.CONTEXTUAL,
+      nodeType: 'text',
+      textContent: d.data.name,
+      isLabel: true,
+      path: d.data.path,
+      buffer: 18 // 18px buffer around text nodes
+    });
+  });
+
+  // Resolve any overlaps detected during positioning
+  dimensionStore.resolveOverlaps();
+
+  // Update node positions based on dimension store resolution
+  // This ensures no overlaps occur and all constraints are met
+  hierarchy.each((d) => {
+    const nodeDimensions = dimensionStore.getNodeDimensions(`node-${d.data.path}`);
+    if (nodeDimensions) {
+      d.y = nodeDimensions.x;
+      d.x = nodeDimensions.y;
+    }
+  });
+
+  return dimensionStore.getLayoutBounds();
 }/**
  * Renders structural links (parent-child relationships) in the hierarchy.
  * Creates curved paths connecting parent nodes to their children using D3's linkHorizontal.
@@ -561,6 +662,7 @@ export function renderNodeShape(element, nodeData, colorInfo, isRoot = false) {
  * Renders all nodes in the hierarchy with their shapes and labels.
  * Creates node groups with file type-specific shapes, colors, and text labels.
  * Uses the flow-based color system and handles special cases for root nodes.
+ * Ensures proper spacing constraints: 18px buffer around text, 12px marker-to-text spacing.
  *
  * @param {Object} g - D3 selection of the main group element
  * @param {Object} hierarchy - D3 hierarchy object containing all positioned nodes
@@ -593,13 +695,37 @@ export function renderNodes(g, hierarchy, rootDir = "", pathColorMap = {}) {
     renderNodeShape(element, d.data, colorInfo, isRoot);
   });
 
-  // Add text labels with proper positioning based on node type
+  // Add text labels with proper positioning based on node type and spacing constraints
   node
     .append("text")
     .attr("dy", "0.31em")
-    .attr("x", (d) => (d.children ? -SVG_CONFIG.nodeOffset : SVG_CONFIG.nodeOffset))
+    .attr("x", (d) => {
+      // Ensure 12px minimum distance between marker and text
+      const markerOffset = SVG_CONFIG.nodeRadius + 12; // Node radius + 12px spacing
+      return d.children ? -markerOffset : markerOffset;
+    })
     .attr("text-anchor", (d) => (d.children ? "end" : "start"))
-    .text((d) => d.data.name);
+    .text((d) => d.data.name)
+    .each(function (d) {
+      // Register text dimensions with dimension store for overlap prevention
+      const textElement = d3.select(this);
+      const textWidth = d.data.name.length * 7; // Approximate text width
+      const textHeight = 14; // Approximate text height
+      const textX = d.children ? -SVG_CONFIG.nodeRadius - 12 - textWidth : SVG_CONFIG.nodeRadius + 12;
+
+      dimensionStore.setNodeDimensions(`text-${d.data.path}`, {
+        x: d.y + textX,
+        y: d.x,
+        width: textWidth,
+        height: textHeight,
+        category: NODE_CATEGORIES.CONTEXTUAL,
+        nodeType: 'text',
+        textContent: d.data.name,
+        isLabel: true,
+        path: d.data.path,
+        buffer: 18 // 18px buffer around text nodes
+      });
+    });
 }
 
 /**
