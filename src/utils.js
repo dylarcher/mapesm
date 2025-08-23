@@ -7,7 +7,8 @@
 import path from "path";
 import {
   COLOR_PALETTE,
-  FILE_TYPE_MAPPINGS
+  FILE_TYPE_MAPPINGS,
+  FILE_CLASSIFICATIONS
 } from "./CONF.js";
 
 /**
@@ -34,39 +35,81 @@ export function getFileType(filename) {
 }
 
 /**
- * Gets the color for a node based on its second-level directory assignment.
- * Colors are applied only to the nodes furthest from root (maximum depth).
- * All nodes maintain consistent solid colors without hue level variations.
+ * Gets the color for a node based on the flow-based color system.
+ * Colors are applied to terminal files and propagated back through their paths.
+ * Directories without colors get the default treatment.
  *
- * @param {number} depth - The depth level of the node (0 = root, 1 = first level, etc.)
- * @param {number} maxDepth - The maximum depth in the tree (used to determine priority)
- * @param {string} [fileType="directory"] - The file type of the node
- * @param {string} [nodePath=""] - The full path of the node for directory analysis
- * @param {string} [rootDir=""] - The root directory path
- * @param {Object} [directoryColorMap={}] - Dynamic directory to single color mapping
- * @returns {string} The hex color code
+ * @param {string} nodePath - The full path of the node
+ * @param {Object} pathColorMap - Flow-based path to color mapping
+ * @param {boolean} isDirectory - Whether this node is a directory
+ * @param {boolean} isRoot - Whether this is the root node
+ * @returns {Object} Color information with hex value and type
+ */
+export function getFlowBasedColor(nodePath, pathColorMap, isDirectory = false, isRoot = false) {
+  // Root node gets special treatment
+  if (isRoot) {
+    return {
+      hex: COLOR_PALETTE.default,
+      type: 'root',
+      hasColor: true
+    };
+  }
+
+  // Check if this path has a color from the flow system
+  if (pathColorMap[nodePath]) {
+    const paletteKey = pathColorMap[nodePath];
+    return {
+      hex: COLOR_PALETTE[paletteKey] || COLOR_PALETTE.default,
+      type: 'flow',
+      hasColor: true
+    };
+  }
+
+  // Directories without colors get default treatment
+  if (isDirectory) {
+    return {
+      hex: COLOR_PALETTE.default,
+      type: 'default-directory',
+      hasColor: false
+    };
+  }
+
+  // Files without colors get default treatment
+  return {
+    hex: COLOR_PALETTE.default,
+    type: 'default',
+    hasColor: false
+  };
+}
+
+/**
+ * Determines if a JavaScript file should be classified as a service/utility file.
+ * Service files get dashed stroke lines in the visualization.
+ *
+ * @param {string} filename - The filename to classify
+ * @param {string} nodePath - The full path of the node
+ * @returns {boolean} True if this is a service/utility file
+ */
+export function isServiceFile(filename, nodePath) {
+  if (!filename.endsWith('.js') && !filename.endsWith('.ts')) {
+    return false;
+  }
+
+  const lowerFilename = filename.toLowerCase();
+  const lowerPath = nodePath.toLowerCase();
+
+  // Check against service file patterns
+  return FILE_CLASSIFICATIONS.service.some(pattern =>
+    pattern.test(lowerFilename) || pattern.test(lowerPath)
+  );
+}
+
+/**
+ * Legacy getColorByDepth function - now redirects to flow-based system.
+ * @deprecated Use getFlowBasedColor instead
  */
 export function getColorByDepth(depth, maxDepth, fileType = "directory", nodePath = "", rootDir = "", directoryColorMap = {}) {
-  // Only apply colors to nodes at maximum depth (furthest from origin)
-  if (depth < maxDepth) {
-    return COLOR_PALETTE.default; // Use default color for non-leaf nodes
-  }
-
-  let paletteKey = "default";
-
-  // For nodes at maximum depth, determine color based on second-level directory
-  if (depth > 0 && nodePath && rootDir) {
-    const relativePath = path.relative(rootDir, nodePath);
-    const pathParts = relativePath.split(path.sep);
-
-    if (pathParts.length > 0 && pathParts[0] !== '.') {
-      const secondLevelDir = pathParts[0];
-      paletteKey = directoryColorMap[secondLevelDir] || "default";
-    }
-  }
-
-  // Return solid color without any opacity variations
-  return COLOR_PALETTE[paletteKey] || COLOR_PALETTE.default;
+  return COLOR_PALETTE.default;
 }
 
 /**

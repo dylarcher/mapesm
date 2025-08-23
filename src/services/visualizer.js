@@ -6,12 +6,11 @@
  */
 
 import * as d3 from "d3";
-import { SVG_CONFIG, generateDirectoryColorMap } from "../CONF.js";
+import { SVG_CONFIG, generateFlowBasedColorMap } from "../CONF.js";
 import {
   buildHierarchicalStructure,
   calculateSVGDimensions,
   createDependencyLinks,
-  extractSecondLevelDirectories,
   getCycleEdges
 } from "../utils.js";
 import {
@@ -29,7 +28,7 @@ import {
 /**
  * Generates an SVG visualization of the dependency graph.
  * Orchestrates the complete visualization pipeline from data transformation through final rendering.
- * Handles hierarchical structure building, node positioning, link rendering, and cycle highlighting.
+ * Uses the flow-based color system where terminal files get unique colors and propagate back through their paths.
  *
  * @param {{nodes: Map<string, Object>, edges: Map<string, Set<string>>}} graph - The dependency graph
  * @param {string[][]} cycles - Array of detected circular dependencies, where each cycle is an array of file paths
@@ -37,12 +36,12 @@ import {
  * @param {Object} options - CLI options for customization
  * @param {string} options.output - Output file path
  * @param {string} options.layout - Layout style for node positioning
+ * @param {string} options.mode - Theme mode ('light', 'dark', 'system', 'auto')
  * @returns {string} The serialized SVG content
  */
 export function generateSVG(graph, cycles, rootDir, options) {
-  // 1. Extract second-level directories and create dynamic color mapping
-  const secondLevelDirs = extractSecondLevelDirectories(graph.nodes, rootDir);
-  const directoryColorMap = generateDirectoryColorMap(secondLevelDirs);
+  // 1. Generate flow-based color mapping (terminal files get unique colors)
+  const pathColorMap = generateFlowBasedColorMap(graph.nodes, rootDir);
 
   // 2. Data Transformation - Convert flat graph into hierarchical structure
   const { root, maxDepth } = buildHierarchicalStructure(graph.nodes, rootDir);
@@ -54,41 +53,54 @@ export function generateSVG(graph, cycles, rootDir, options) {
 
   // 4. Position nodes using selected layout algorithm
   const layoutStyle = options.layout || 'auto';
-  const bounds = positionNodes(hierarchy, maxDepth, contentWidth, layoutStyle);
+  const direction = options.direction || 'horizontal';
+  const bounds = positionNodes(hierarchy, maxDepth, contentWidth, layoutStyle, direction);
 
-  // 5. Crop SVG to content bounds with minimal padding (aggressive whitespace removal)
+  // 5. Calculate legend dimensions first
+  const legendWidth = 280;
+  const legendPadding = 40; // Space around legend
+  const legendSpaceNeeded = legendWidth + legendPadding;
+
+  // 6. Crop SVG to content bounds with padding, adding space for legend
   const padding = 40; // Minimal padding around content
-  const croppedWidth = (bounds.maxX - bounds.minX) + (padding * 2);
-  const croppedHeight = (bounds.maxY - bounds.minY) + (padding * 2);
+  const croppedWidth = (bounds.maxX - bounds.minX) + (padding * 2) + legendSpaceNeeded;
+  const croppedHeight = Math.max((bounds.maxY - bounds.minY) + (padding * 2), 500); // Ensure minimum height for legend
 
   // Log cropping results
   console.log(`SVG Cropped: ${Math.round(croppedWidth)}x${Math.round(croppedHeight)} (layout: ${layoutStyle})`);
 
-  // 6. Create base SVG structure with cropped dimensions
-  const { svg } = createBaseSVG(croppedWidth, croppedHeight);
+  // 7. Create base SVG structure with cropped dimensions and theme support
+  const themeMode = options.mode || 'system';
+  const { svg } = createBaseSVG(croppedWidth, croppedHeight, themeMode);
+
+  // Position chart content to the right of legend space
+  // Ensure chart starts well after legend space to avoid any overlap
+  // Account for text labels which can extend significantly to the left
+  const chartStartX = legendSpaceNeeded + padding + 100;  // Extra 100px buffer for text
+  const chartOffsetX = chartStartX - bounds.minX;
+  const chartOffsetY = -bounds.minY + padding;
   const g = svg
     .append("g")
-    .attr("transform", `translate(${-bounds.minX + padding}, ${-bounds.minY + padding})`);
+    .attr("transform", `translate(${chartOffsetX}, ${chartOffsetY})`);
 
-  // 7. Render hierarchical structural links (parent-child relationships)
+  // 8. Render hierarchical structural links (parent-child relationships)
+  // 8. Render hierarchical structural links (parent-child relationships)
   renderStructuralLinks(g, hierarchy);
 
-  // 8. Render dependency links with target node colors and cycle highlighting
+  // 9. Render dependency links with flow-based colors and service file dashed strokes
   const cycleEdges = getCycleEdges(cycles);
   const dependencyLinks = createDependencyLinks(graph.edges, new Map(
     Array.from(graph.nodes.entries()).map(([path, node]) => [path, { ...node, path }])
   ));
-  renderDependencyLinks(g, dependencyLinks, cycleEdges, hierarchy, maxDepth, rootDir, directoryColorMap);
+  renderDependencyLinks(g, dependencyLinks, cycleEdges, hierarchy, pathColorMap);
 
-  // 9. Render nodes with consistent directory colors (no depth variations)
-  renderNodes(g, hierarchy, maxDepth, rootDir, directoryColorMap);
+  // 10. Render nodes with flow-based color system, home icon for root, default styling for directories
+  renderNodes(g, hierarchy, rootDir, pathColorMap);
 
-  // 10. Add compact legend for directory colors and file type shapes
-  const legendWidth = 250;
-  const legendHeight = (secondLevelDirs.length + Object.keys(SVG_CONFIG).length) * 25 + 80;
-  if (croppedWidth > legendWidth + 100) { // Only show legend if there's space
-    renderLegend(svg, croppedWidth, croppedHeight, secondLevelDirs, directoryColorMap);
-  }
+  // 11. Add legend in the allocated left space
+  const legendX = 24; // Fixed position in legend space
+  const legendY = 24;
+  renderLegend(svg, croppedWidth, croppedHeight, pathColorMap, graph.nodes, legendX, legendY);
 
   // 11. Serialize SVG to string for file output
   return serializeSVG(svg);

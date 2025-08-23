@@ -7,8 +7,8 @@
 import * as d3 from "d3";
 import { JSDOM } from "jsdom";
 import xmlserializer from "xmlserializer";
-import { COLOR_PALETTE, SHAPE_LEGEND, SVG_CONFIG, SVG_SHAPES, SVG_STYLES } from "../CONF.js";
-import { getColorByDepth } from "../utils.js";
+import { COLOR_PALETTE, SHAPE_LEGEND, SVG_CONFIG, SVG_SHAPES, getSVGStyles } from "../CONF.js";
+import { getFlowBasedColor, isServiceFile } from "../utils.js";
 
 /**
  * Calculates optimal bounds for the node graph with intelligent whitespace management.
@@ -18,7 +18,7 @@ import { getColorByDepth } from "../utils.js";
  * @returns {Object} Optimal bounds with minimal padding
  */
 function calculateOptimalBounds(hierarchy) {
-  if (!hierarchy) return { minX: 0, maxX: 100, minY: 0, maxY: 100 };
+  if (!hierarchy) return { minX: 320, maxX: 420, minY: 0, maxY: 100 }; // Ensure minX is always >= 320
 
   // Collect all node positions using the correct coordinate mapping
   // Note: nodes are rendered as translate(d.y, d.x), so we need to map accordingly
@@ -30,13 +30,21 @@ function calculateOptimalBounds(hierarchy) {
     });
   });
 
-  if (positions.length === 0) return { minX: 0, maxX: 100, minY: 0, maxY: 100 };
+  if (positions.length === 0) return { minX: 320, maxX: 420, minY: 0, maxY: 100 }; // Ensure minX is always >= 320
 
   // Calculate raw bounds
   let minX = Math.min(...positions.map(p => p.x));
   let maxX = Math.max(...positions.map(p => p.x));
   let minY = Math.min(...positions.map(p => p.y));
   let maxY = Math.max(...positions.map(p => p.y));
+
+  // CRITICAL: Ensure content never overlaps with legend area (0-320px on x-axis)
+  const legendSpaceWidth = 320; // Reserve 320px for legend space (280px + 40px padding)
+  if (minX < legendSpaceWidth) {
+    const shift = legendSpaceWidth - minX;
+    minX = legendSpaceWidth;
+    maxX += shift;
+  }
 
   // Add buffer for node radius AND text labels (text can extend quite far)
   const nodeBuffer = SVG_CONFIG.nodeRadius * 2;
@@ -47,6 +55,9 @@ function calculateOptimalBounds(hierarchy) {
   maxX += totalBuffer;
   minY -= totalBuffer;
   maxY += totalBuffer;
+
+  // Ensure minX is never less than legend space after buffers
+  minX = Math.max(minX, 0); // Allow some overlap with buffers, but ensure content starts at 0 minimum
 
   // Intelligent whitespace detection and consolidation
   const currentWidth = maxX - minX;
@@ -103,11 +114,12 @@ function calculateOptimalBounds(hierarchy) {
  *
  * @param {number} width - SVG width in pixels
  * @param {number} height - SVG height in pixels
+ * @param {string} mode - Theme mode ('light', 'dark', 'system', 'auto')
  * @returns {Object} Object containing the SVG selection and DOM instance
  * @returns {Object} returns.svg - D3 selection of the SVG element
  * @returns {Object} returns.dom - JSDOM instance for server-side rendering
  */
-export function createBaseSVG(width, height) {
+export function createBaseSVG(width, height, mode = 'system') {
   const dom = new JSDOM("<!DOCTYPE html><body></body>");
   const body = d3.select(dom.window.document.body);
 
@@ -119,7 +131,7 @@ export function createBaseSVG(width, height) {
     .attr("xmlns", "http://www.w3.org/2000/svg");
 
   // Add styles for theming and visual consistency
-  svg.append("defs").append("style").text(SVG_STYLES);
+  svg.append("defs").append("style").text(getSVGStyles(mode));
 
   return { svg, dom };
 }
@@ -132,21 +144,22 @@ const LAYOUT_ALGORITHMS = {
   /**
    * Automatic layout selection based on graph characteristics
    */
-  auto: (hierarchy, maxDepth, contentWidth) => {
+  auto: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
     const totalNodes = hierarchy.descendants().length;
     const aspectRatio = contentWidth / (maxDepth * 100);
 
     // Choose layout based on graph characteristics
-    if (totalNodes <= 10) return LAYOUT_ALGORITHMS.tree(hierarchy, maxDepth, contentWidth);
-    if (aspectRatio > 2) return LAYOUT_ALGORITHMS.horizontal(hierarchy, maxDepth, contentWidth);
-    if (maxDepth > 5) return LAYOUT_ALGORITHMS.circular(hierarchy, maxDepth, contentWidth);
-    return LAYOUT_ALGORITHMS.diagonal(hierarchy, maxDepth, contentWidth);
+    if (totalNodes <= 10) return LAYOUT_ALGORITHMS.tree(hierarchy, maxDepth, contentWidth, direction);
+    if (aspectRatio > 2) return LAYOUT_ALGORITHMS.linear(hierarchy, maxDepth, contentWidth, direction);
+    if (maxDepth > 5) return LAYOUT_ALGORITHMS.circular(hierarchy, maxDepth, contentWidth, direction);
+    return LAYOUT_ALGORITHMS.diagonal(hierarchy, maxDepth, contentWidth, direction);
   },
 
   /**
    * Circular/half-circle layout - nodes arranged in concentric arcs
    */
-  circular: (hierarchy, maxDepth, contentWidth) => {
+  circular: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
+    const legendPadding = 320; // Left padding to avoid legend overlap
     const levelWidth = Math.max(contentWidth / Math.max(maxDepth, 1), 200);
     const nodesByLevel = new Map();
 
@@ -156,21 +169,40 @@ const LAYOUT_ALGORITHMS = {
     });
 
     nodesByLevel.forEach((nodes, level) => {
-      const baseY = level * levelWidth;
+      if (direction === 'vertical') {
+        // Vertical circular - grow downward
+        const baseX = level * levelWidth;
+        if (nodes.length === 1) {
+          nodes[0].x = baseX;
+          nodes[0].y = legendPadding;
+        } else {
+          const radius = Math.max(120, nodes.length * 20);
+          const angleStep = Math.PI / Math.max(nodes.length - 1, 1);
+          const startAngle = 0;
 
-      if (nodes.length === 1) {
-        nodes[0].x = 0;
-        nodes[0].y = baseY;
+          nodes.forEach((node, i) => {
+            const angle = startAngle + (i * angleStep);
+            node.x = baseX + radius * Math.cos(angle);
+            node.y = legendPadding + radius * (0.4 + 0.6 * Math.abs(Math.sin(angle)));
+          });
+        }
       } else {
-        const radius = Math.max(120, nodes.length * 20);
-        const angleStep = Math.PI / Math.max(nodes.length - 1, 1);
-        const startAngle = -Math.PI / 2;
+        // Horizontal circular - grow rightward
+        const baseY = legendPadding + level * levelWidth;
+        if (nodes.length === 1) {
+          nodes[0].x = 0;
+          nodes[0].y = baseY;
+        } else {
+          const radius = Math.max(120, nodes.length * 20);
+          const angleStep = Math.PI / Math.max(nodes.length - 1, 1);
+          const startAngle = -Math.PI / 2;
 
-        nodes.forEach((node, i) => {
-          const angle = startAngle + (i * angleStep);
-          node.x = radius * Math.sin(angle);
-          node.y = baseY + radius * (0.4 + 0.6 * Math.abs(Math.cos(angle)));
-        });
+          nodes.forEach((node, i) => {
+            const angle = startAngle + (i * angleStep);
+            node.x = radius * Math.sin(angle);
+            node.y = baseY + radius * (0.4 + 0.6 * Math.abs(Math.cos(angle)));
+          });
+        }
       }
     });
 
@@ -180,7 +212,8 @@ const LAYOUT_ALGORITHMS = {
   /**
    * Diagonal layout - staggered positioning with indentation
    */
-  diagonal: (hierarchy, maxDepth, contentWidth) => {
+  diagonal: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
+    const legendPadding = 320; // Left padding to avoid legend overlap
     const levelWidth = contentWidth / Math.max(maxDepth, 1);
     const levelHeight = 80;
     const indentAmount = 60;
@@ -192,114 +225,116 @@ const LAYOUT_ALGORITHMS = {
     });
 
     nodesByLevel.forEach((nodes, level) => {
-      const xOffset = level * indentAmount;
-      const yBase = level * levelHeight;
+      if (direction === 'vertical') {
+      // Vertical diagonal - indent each level to the right, stack vertically
+        const xOffset = level * indentAmount;
+        const yBase = legendPadding + level * levelHeight;
 
-      nodes.forEach((node, i) => {
-        node.x = xOffset + (i * 40);
-        node.y = yBase + (i * 30);
+        nodes.forEach((node, i) => {
+          node.x = xOffset + (i * 30);
+          node.y = yBase + (i * 40);
+        });
+      } else {
+        // Horizontal diagonal - indent each level down, spread horizontally
+        const xOffset = level * indentAmount;
+        const yBase = legendPadding + level * levelHeight;
+
+        nodes.forEach((node, i) => {
+          node.x = xOffset + (i * 40);
+          node.y = yBase + (i * 30);
+        });
+      }
+    });
+
+    return calculateOptimalBounds(hierarchy);
+  },
+
+  /**
+   * Linear layout - nodes in straight progression using direction
+   */
+  linear: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
+    const legendPadding = 320; // Left padding to avoid legend overlap
+
+    if (direction === 'horizontal') {
+      // Horizontal linear layout - nodes flow left to right
+      let currentX = legendPadding;
+      const centerY = 0;
+
+      hierarchy.each(d => {
+        d.x = currentX;
+        d.y = centerY + (Math.random() - 0.5) * 100; // Add slight vertical variation
+        currentX += SVG_CONFIG.levelHeight * 2;
       });
-    });
+    } else {
+      // Vertical linear layout - TEMPORARILY DISABLED
+      // Default to horizontal for now
+      let currentX = legendPadding;
+      const centerY = 0;
 
-    return calculateOptimalBounds(hierarchy);
-  },
-
-  /**
-   * Linear layout - nodes in straight progression
-   */
-  linear: (hierarchy, maxDepth, contentWidth) => {
-    const levelHeight = 100;
-    const nodeSpacing = 40;
-
-    hierarchy.each((d, i) => {
-      d.x = i * nodeSpacing;
-      d.y = d.depth * levelHeight;
-    });
-
-    return calculateOptimalBounds(hierarchy);
-  },
-
-  /**
-   * Horizontal layout - left to right arrangement
-   */
-  horizontal: (hierarchy, maxDepth, contentWidth) => {
-    const levelWidth = contentWidth / Math.max(maxDepth, 1);
-    const nodesByLevel = new Map();
-
-    hierarchy.each((d) => {
-      if (!nodesByLevel.has(d.depth)) nodesByLevel.set(d.depth, []);
-      nodesByLevel.get(d.depth).push(d);
-    });
-
-    nodesByLevel.forEach((nodes, level) => {
-      const yBase = level * levelWidth;
-      const nodeSpacing = 60;
-
-      nodes.forEach((node, i) => {
-        node.y = yBase;
-        node.x = i * nodeSpacing - (nodes.length - 1) * nodeSpacing / 2;
+      hierarchy.each(d => {
+        d.x = currentX;
+        d.y = centerY + (Math.random() - 0.5) * 100;
+        currentX += SVG_CONFIG.levelHeight * 2;
       });
-    });
+    }
 
     return calculateOptimalBounds(hierarchy);
   },
 
   /**
-   * Vertical layout - top to bottom arrangement
+   * Tree layout - traditional hierarchical tree with direction support
    */
-  vertical: (hierarchy, maxDepth, contentWidth) => {
-    const nodesByLevel = new Map();
-    hierarchy.each((d) => {
-      if (!nodesByLevel.has(d.depth)) nodesByLevel.set(d.depth, []);
-      nodesByLevel.get(d.depth).push(d);
-    });
+  tree: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
+    const legendPadding = 320; // Left padding to avoid legend overlap
 
-    let currentY = 0;
-    nodesByLevel.forEach((nodes, level) => {
-      const nodeSpacing = 50;
-      const levelHeight = 80;
+    if (direction === 'vertical') {
+      // Vertical tree layout
+      const treeLayout = d3.tree().size([contentWidth, maxDepth * 100]);
+      treeLayout(hierarchy);
 
-      nodes.forEach((node, i) => {
-        node.x = i * nodeSpacing - (nodes.length - 1) * nodeSpacing / 2;
-        node.y = currentY;
+      hierarchy.each((d) => {
+        // Keep x and y as-is for vertical layout, just add legend padding
+        d.y = d.y + legendPadding;
       });
+    } else {
+      // Horizontal tree layout
+      const treeLayout = d3.tree().size([contentWidth, maxDepth * 100]);
+      treeLayout(hierarchy);
 
-      currentY += levelHeight;
-    });
-
-    return calculateOptimalBounds(hierarchy);
-  },
-
-  /**
-   * Tree layout - traditional hierarchical tree
-   */
-  tree: (hierarchy, maxDepth, contentWidth) => {
-    const treeLayout = d3.tree().size([contentWidth, maxDepth * 100]);
-    treeLayout(hierarchy);
-
-    // Swap x and y for horizontal tree
-    hierarchy.each((d) => {
-      const temp = d.x;
-      d.x = d.y;
-      d.y = temp;
-    });
+      // Swap x and y for horizontal tree and add legend padding
+      hierarchy.each((d) => {
+        const temp = d.x;
+        d.x = d.y;
+        d.y = temp + legendPadding;
+      });
+    }
 
     return calculateOptimalBounds(hierarchy);
   },
 
   /**
-   * Grid layout - organized in regular grid pattern
+   * Grid layout - organized in regular grid pattern with direction support
    */
-  grid: (hierarchy, maxDepth, contentWidth) => {
+  grid: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
+    const legendPadding = 320; // Left padding to avoid legend overlap
     const descendants = hierarchy.descendants();
     const gridSize = Math.ceil(Math.sqrt(descendants.length));
     const cellSize = Math.min(contentWidth / gridSize, 100);
 
     descendants.forEach((node, i) => {
-      const row = Math.floor(i / gridSize);
-      const col = i % gridSize;
-      node.x = col * cellSize;
-      node.y = row * cellSize;
+      if (direction === 'vertical') {
+        // Vertical grid - fill columns first (top to bottom, then left to right)
+        const col = Math.floor(i / gridSize);
+        const row = i % gridSize;
+        node.x = col * cellSize;
+        node.y = legendPadding + row * cellSize;
+      } else {
+      // Horizontal grid - fill rows first (left to right, then top to bottom)
+        const row = Math.floor(i / gridSize);
+        const col = i % gridSize;
+        node.x = col * cellSize;
+        node.y = legendPadding + row * cellSize;
+      }
     });
 
     return calculateOptimalBounds(hierarchy);
@@ -315,9 +350,9 @@ const LAYOUT_ALGORITHMS = {
  * @param {string} layoutStyle - Layout algorithm to use
  * @returns {Object} Bounds of the positioned nodes
  */
-export function positionNodes(hierarchy, maxDepth, contentWidth, layoutStyle = 'auto') {
+export function positionNodes(hierarchy, maxDepth, contentWidth, layoutStyle = 'auto', direction = 'horizontal') {
   const algorithm = LAYOUT_ALGORITHMS[layoutStyle] || LAYOUT_ALGORITHMS.auto;
-  return algorithm(hierarchy, maxDepth, contentWidth);
+  return algorithm(hierarchy, maxDepth, contentWidth, direction);
 }/**
  * Renders structural links (parent-child relationships) in the hierarchy.
  * Creates curved paths connecting parent nodes to their children using D3's linkHorizontal.
@@ -344,26 +379,34 @@ export function renderStructuralLinks(g, hierarchy) {
  * Renders dependency links (import/export relationships).
  * Creates curved paths for dependencies with colors based on target nodes.
  * Uses adaptive Bézier curves and applies target node colors to connecting lines.
+ * Adds dashed strokes for service/utility files.
  *
  * @param {Object} g - D3 selection of the main group element
  * @param {Array} dependencyLinks - Array of dependency link objects with source and target properties
  * @param {Set} cycleEdges - Set of edge identifiers that are part of circular dependencies
  * @param {Object} hierarchy - D3 hierarchy object for node position lookup
- * @param {number} maxDepth - Maximum depth for color calculations
- * @param {string} rootDir - Root directory path for color mapping
- * @param {Object} directoryColorMap - Directory to color mapping
+ * @param {Object} pathColorMap - Flow-based path to color mapping
  */
-export function renderDependencyLinks(g, dependencyLinks, cycleEdges, hierarchy, maxDepth = 1, rootDir = "", directoryColorMap = {}) {
+export function renderDependencyLinks(g, dependencyLinks, cycleEdges, hierarchy, pathColorMap = {}) {
   g.selectAll(".dependency-link")
     .data(dependencyLinks)
     .enter()
     .append("path")
-    .attr(
-      "class",
-      (d) =>
-        `link dependency-link ${cycleEdges.has(`${d.source.path}->${d.target.path}`) ? "cycle-link" : ""
-        }`
-    )
+    .attr("class", (d) => {
+      let classes = "link dependency-link";
+
+      // Add cycle class if this link is part of a circular dependency
+      if (cycleEdges.has(`${d.source.path}->${d.target.path}`)) {
+        classes += " cycle-link";
+      }
+
+      // Add service class for dashed stroke if target is a service file
+      if (isServiceFile(d.target.name, d.target.path)) {
+        classes += " service-link";
+      }
+
+      return classes;
+    })
     .attr("stroke", (d) => {
       // Find the target node to get its color
       const target = hierarchy
@@ -371,15 +414,9 @@ export function renderDependencyLinks(g, dependencyLinks, cycleEdges, hierarchy,
         .find((node) => node.data.path === d.target.path);
 
       if (target && target.data) {
-        // Use the same color calculation as the target node
-        return getColorByDepth(
-          target.data.depth || 0,
-          maxDepth,
-          target.data.fileType,
-          target.data.path,
-          rootDir,
-          directoryColorMap
-        );
+        // Use the flow-based color system
+        const colorInfo = getFlowBasedColor(target.data.path, pathColorMap, target.data.isDirectory);
+        return colorInfo.hex;
       }
 
       // Fallback to default dependency color
@@ -429,27 +466,45 @@ export function renderDependencyLinks(g, dependencyLinks, cycleEdges, hierarchy,
 }
 
 /**
- * Renders a shape for a node based on its file type.
- * Creates different geometric shapes to visually distinguish file types:
- * - Directories: circles
- * - Scripts: diamonds
- * - Styles: squares
- * - Images: stars
- * - Multimedia: trapezoids
- * - Default: tag shapes
+ * Renders a shape for a node based on its file type and color information.
+ * Creates different geometric shapes to visually distinguish file types.
+ * Handles special cases like root nodes and default directories.
  *
  * @param {Object} element - D3 selection of the node element to append the shape to
  * @param {Object} nodeData - The node data object containing file type and other properties
- * @param {string} color - The hex color code to fill the shape
+ * @param {Object} colorInfo - Color information object with hex, type, and hasColor properties
+ * @param {boolean} isRoot - Whether this is the root node
  */
-export function renderNodeShape(element, nodeData, color) {
+export function renderNodeShape(element, nodeData, colorInfo, isRoot = false) {
+  const { hex, type, hasColor } = colorInfo;
+
+  // Special handling for root node - home icon with inverted colors
+  if (isRoot) {
+    element
+      .append("path")
+      .attr("d", SVG_SHAPES.home)
+      .attr("class", "node-shape shape-home")
+      .style("--color", hex);
+    return;
+  }
+
+  // Special handling for directories without colors
+  if (type === 'default-directory') {
+    element
+      .append("circle")
+      .attr("r", SVG_CONFIG.nodeRadius)
+      .attr("class", "node-shape shape-directory default-directory");
+    return;
+  }
+
+  // Regular node shapes with colors
   switch (nodeData.fileType) {
     case "directory":
       element
         .append("circle")
         .attr("r", SVG_CONFIG.nodeRadius)
         .attr("class", "node-shape shape-directory")
-        .attr("fill", color);
+        .attr("fill", hex);
       break;
 
     case "script":
@@ -458,7 +513,7 @@ export function renderNodeShape(element, nodeData, color) {
         .append("path")
         .attr("d", SVG_SHAPES.diamond)
         .attr("class", "node-shape shape-script")
-        .attr("fill", color);
+        .attr("fill", hex);
       break;
 
     case "style":
@@ -470,34 +525,34 @@ export function renderNodeShape(element, nodeData, color) {
         .attr("width", 12)
         .attr("height", 12)
         .attr("class", "node-shape shape-style")
-        .attr("fill", color);
+        .attr("fill", hex);
       break;
 
     case "image":
-      // Star shape for image files
+      // Octagon shape for image files
       element
         .append("path")
-        .attr("d", SVG_SHAPES.star)
+        .attr("d", SVG_SHAPES.octagon)
         .attr("class", "node-shape shape-image")
-        .attr("fill", color);
+        .attr("fill", hex);
       break;
 
     case "multimedia":
-      // Trapezoid shape for video/audio files
+      // 5-point star shape for media files
       element
         .append("path")
-        .attr("d", SVG_SHAPES.trapezoid)
+        .attr("d", SVG_SHAPES.star)
         .attr("class", "node-shape shape-multimedia")
-        .attr("fill", color);
+        .attr("fill", hex);
       break;
 
     default:
-      // Tag/label shape for config and other files
+      // Triangle shape for config and other files
       element
         .append("path")
-        .attr("d", SVG_SHAPES.tag)
+        .attr("d", SVG_SHAPES.triangle)
         .attr("class", "node-shape shape-default")
-        .attr("fill", color);
+        .attr("fill", hex);
       break;
   }
 }
@@ -505,38 +560,37 @@ export function renderNodeShape(element, nodeData, color) {
 /**
  * Renders all nodes in the hierarchy with their shapes and labels.
  * Creates node groups with file type-specific shapes, colors, and text labels.
- * Applies depth-based coloring and positioning for visual hierarchy.
+ * Uses the flow-based color system and handles special cases for root nodes.
  *
  * @param {Object} g - D3 selection of the main group element
  * @param {Object} hierarchy - D3 hierarchy object containing all positioned nodes
- * @param {number} maxDepth - Maximum depth in the tree for color gradient calculations
- * @param {string} rootDir - Root directory path for color mapping
- * @param {Object} directoryColorMap - Dynamic directory to color palette mapping
+ * @param {string} rootDir - Root directory path
+ * @param {Object} pathColorMap - Flow-based path to color mapping
  */
-export function renderNodes(g, hierarchy, maxDepth, rootDir = "", directoryColorMap = {}) {
+export function renderNodes(g, hierarchy, rootDir = "", pathColorMap = {}) {
   const node = g
     .selectAll(".node")
     .data(hierarchy.descendants())
     .enter()
     .append("g")
-    .attr("class", (d) => `node node--${d.data.fileType}`)
-    .attr("transform", (d) => `translate(${d.y},${d.x})`)
-    .style("--color", (d) =>
-      getColorByDepth(d.data.depth || 0, maxDepth, d.data.fileType, d.data.path, rootDir, directoryColorMap)
-    );
+    .attr("class", (d) => {
+      let classes = `node node--${d.data.fileType}`;
+      const isRoot = d.data.path === rootDir;
+      if (isRoot) classes += " root-node";
+      return classes;
+    })
+    .attr("transform", (d) => `translate(${d.y},${d.x})`);
 
-  // Add shapes based on file type with depth-based coloring
+  // Add shapes based on file type with flow-based coloring
   node.each(function (d) {
     const element = d3.select(this);
-    const color = getColorByDepth(
-      d.data.depth || 0,
-      maxDepth,
-      d.data.fileType,
-      d.data.path,
-      rootDir,
-      directoryColorMap
-    );
-    renderNodeShape(element, d.data, color);
+    const isRoot = d.data.path === rootDir;
+    const colorInfo = getFlowBasedColor(d.data.path, pathColorMap, d.data.isDirectory, isRoot);
+
+    // Set CSS custom property for color
+    element.style("--color", colorInfo.hex);
+
+    renderNodeShape(element, d.data, colorInfo, isRoot);
   });
 
   // Add text labels with proper positioning based on node type
@@ -549,28 +603,42 @@ export function renderNodes(g, hierarchy, maxDepth, rootDir = "", directoryColor
 }
 
 /**
- * Renders a legend for directory colors and file type shapes.
- * Creates a legend that maps colors to second-level directories and shapes to file types.
+ * Renders a legend for terminal file colors and file type shapes.
+ * Creates a legend that maps colors to terminal files and shapes to file types.
  *
  * @param {Object} svg - D3 SVG selection
  * @param {number} width - SVG width
  * @param {number} height - SVG height
- * @param {string[]} secondLevelDirs - Array of second-level directory names
- * @param {Object} directoryColorMap - Directory to color palette mapping
+ * @param {Object} pathColorMap - Flow-based path to color mapping
+ * @param {Map<string, Object>} nodeMap - Map of file paths to node data
+ * @param {number} x - X position for legend (optional, defaults to 24)
+ * @param {number} y - Y position for legend (optional, defaults to 24)
  */
-export function renderLegend(svg, width, height, secondLevelDirs, directoryColorMap) {
+export function renderLegend(svg, width, height, pathColorMap, nodeMap, x = 24, y = 24) {
   const legend = svg.append("g")
     .attr("class", "legend")
-    .attr("transform", `translate(24, 24)`); // Position in top-left with 24px margin
+    .attr("transform", `translate(${x}, ${y})`); // Position with provided coordinates
 
   let yOffset = 0;
 
+  // Find terminal files for color legend
+  const terminalFiles = [];
+  for (const [nodePath, nodeData] of nodeMap.entries()) {
+    if (!nodeData.isDirectory && nodeData.fileType !== 'directory' && pathColorMap[nodePath]) {
+      terminalFiles.push({
+        name: nodeData.name,
+        path: nodePath,
+        color: pathColorMap[nodePath]
+      });
+    }
+  }
+
   // Calculate legend background dimensions
-  const directoryLegendItems = secondLevelDirs.length;
+  const colorLegendItems = terminalFiles.length;
   const shapeLegendItems = Object.keys(SHAPE_LEGEND).length;
-  const totalItems = directoryLegendItems + shapeLegendItems + 2; // +2 for titles
-  const legendHeight = totalItems * SVG_CONFIG.legend.itemHeight + 40; // Extra padding
-  const legendWidth = 250;
+  const totalItems = colorLegendItems + shapeLegendItems + 2; // +2 for titles
+  const legendHeight = Math.max(totalItems * SVG_CONFIG.legend.itemHeight + 64, 200); // Extra padding (reduced by 24px)
+  const legendWidth = 280;
 
   // Add legend background
   legend.append("rect")
@@ -580,47 +648,51 @@ export function renderLegend(svg, width, height, secondLevelDirs, directoryColor
     .attr("width", legendWidth)
     .attr("height", legendHeight);
 
-  // Directory Colors Legend
+  // Series Colors Legend
+  if (terminalFiles.length > 0) {
+    yOffset += 16; // Move title down by line height to prevent border overlap
+    legend.append("text")
+      .attr("class", "legend-title")
+      .attr("x", 0)
+      .attr("y", yOffset)
+      .text("Series Colors");
+    yOffset += SVG_CONFIG.legend.itemHeight + 5;
+
+    terminalFiles.slice(0, 10).forEach(file => { // Limit to first 10 to avoid crowding
+      const color = COLOR_PALETTE[file.color] || COLOR_PALETTE.default;
+
+      const legendItem = legend.append("g")
+        .attr("class", "legend-item")
+        .attr("transform", `translate(0, ${yOffset})`);
+
+      // Color swatch
+      legendItem.append("rect")
+        .attr("width", SVG_CONFIG.legend.colorBoxSize)
+        .attr("height", SVG_CONFIG.legend.colorBoxSize)
+        .attr("fill", color);
+
+      // File name (truncate if too long)
+      const displayName = file.name.length > 20 ? file.name.substring(0, 17) + '...' : file.name;
+      legendItem.append("text")
+        .attr("class", "legend-text")
+        .attr("x", SVG_CONFIG.legend.colorBoxSize + SVG_CONFIG.legend.spacing)
+        .attr("y", SVG_CONFIG.legend.colorBoxSize / 2)
+        .attr("dy", "0.31em")
+        .text(displayName);
+
+      yOffset += SVG_CONFIG.legend.itemHeight;
+    });
+
+    yOffset += 10; // Extra spacing between sections
+  }
+
+  // File Type Marker Shapes Legend
+  yOffset += 16; // Move title down by line height for proper spacing
   legend.append("text")
     .attr("class", "legend-title")
     .attr("x", 0)
     .attr("y", yOffset)
-    .text("Directory Colors");
-  yOffset += SVG_CONFIG.legend.itemHeight + 5;
-
-  secondLevelDirs.forEach(dirName => {
-    const paletteKey = directoryColorMap[dirName] || 'default';
-    const color = COLOR_PALETTE[paletteKey]; // Now just a single color
-
-    const legendItem = legend.append("g")
-      .attr("class", "legend-item")
-      .attr("transform", `translate(0, ${yOffset})`);
-
-    // Color swatch
-    legendItem.append("rect")
-      .attr("width", SVG_CONFIG.legend.colorBoxSize)
-      .attr("height", SVG_CONFIG.legend.colorBoxSize)
-      .attr("fill", color);
-
-    // Directory name
-    legendItem.append("text")
-      .attr("class", "legend-text")
-      .attr("x", SVG_CONFIG.legend.colorBoxSize + SVG_CONFIG.legend.spacing)
-      .attr("y", SVG_CONFIG.legend.colorBoxSize / 2)
-      .attr("dy", "0.31em")
-      .text(dirName);
-
-    yOffset += SVG_CONFIG.legend.itemHeight;
-  });
-
-  yOffset += 10; // Extra spacing between sections
-
-  // File Type Shapes Legend
-  legend.append("text")
-    .attr("class", "legend-title")
-    .attr("x", 0)
-    .attr("y", yOffset)
-    .text("File Type Shapes");
+    .text("Markers Types");
   yOffset += SVG_CONFIG.legend.itemHeight + 5;
 
   Object.entries(SHAPE_LEGEND).forEach(([shapeType, info]) => {
@@ -633,7 +705,7 @@ export function renderLegend(svg, width, height, secondLevelDirs, directoryColor
       .attr("transform", `translate(${SVG_CONFIG.legend.shapeSize / 2}, ${SVG_CONFIG.legend.shapeSize / 2})`);
 
     // Create shape based on file type using the same logic as renderNodeShape
-    const defaultColor = COLOR_PALETTE.default; // Use single default color
+    const defaultColor = COLOR_PALETTE.default;
     renderShapeForLegend(shapeGroup, shapeType, defaultColor);
 
     // Shape description
@@ -684,21 +756,21 @@ export function renderShapeForLegend(element, shapeType, color) {
 
     case "image":
       element.append("path")
-        .attr("d", SVG_SHAPES.star)
+        .attr("d", SVG_SHAPES.octagon)
         .attr("transform", `scale(${scale})`)
         .attr("fill", color);
       break;
 
     case "multimedia":
       element.append("path")
-        .attr("d", SVG_SHAPES.trapezoid)
+        .attr("d", SVG_SHAPES.star)
         .attr("transform", `scale(${scale})`)
         .attr("fill", color);
       break;
 
     default:
       element.append("path")
-        .attr("d", SVG_SHAPES.tag)
+        .attr("d", SVG_SHAPES.triangle)
         .attr("transform", `scale(${scale})`)
         .attr("fill", color);
       break;
