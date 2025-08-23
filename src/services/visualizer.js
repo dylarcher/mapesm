@@ -63,7 +63,7 @@ export function generateSVG(graph, cycles, rootDir, options) {
 
   // 6. Crop SVG to content bounds with padding, adding space for legend
   const padding = 40; // Minimal padding around content
-  const croppedWidth = (bounds.maxX - bounds.minX) + (padding * 2) + legendSpaceNeeded;
+  const croppedWidth = (bounds.maxX - bounds.minX) + (padding * 2) + legendSpaceNeeded + 48; // Add 48px to canvas width
   const croppedHeight = Math.max((bounds.maxY - bounds.minY) + (padding * 2), 500); // Ensure minimum height for legend
 
   // Log cropping results
@@ -74,10 +74,15 @@ export function generateSVG(graph, cycles, rootDir, options) {
   const { svg } = createBaseSVG(croppedWidth, croppedHeight, themeMode);
 
   // Position chart content to the right of legend space
-  // Ensure chart starts well after legend space to avoid any overlap
-  // Account for text labels which can extend significantly to the left
-  const chartStartX = legendSpaceNeeded + padding + 100;  // Extra 100px buffer for text
-  const chartOffsetX = chartStartX - bounds.minX;
+  // Calculate the maximum text extension to ensure nothing goes off-canvas
+  const maxTextExtension = 120; // Maximum expected text width + marker offset
+  const chartStartX = legendSpaceNeeded + padding;
+
+  // Adjust chart position to shift left by half the distance from legend edge
+  const legendRightEdge = legendSpaceNeeded;
+  const shiftAmount = (croppedWidth - legendRightEdge) * 0.3 + 12; // Shift left by 30% of remaining space + 12px (reduced by 12px to shift right)
+
+  const chartOffsetX = Math.max(chartStartX - bounds.minX - shiftAmount, legendSpaceNeeded + 20);
   const chartOffsetY = -bounds.minY + padding;
   const g = svg
     .append("g")
