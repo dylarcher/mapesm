@@ -9,7 +9,7 @@
 import chalk from "chalk";
 import { Command } from "commander";
 import { createRequire } from "module";
-import { DEFAULT_CLI_OPTIONS, LAYOUT_DESCRIPTIONS, LAYOUT_STYLES, MESSAGES } from "../src/CONF.js";
+import { DEFAULT_CLI_OPTIONS, DIRECTION_DESCRIPTIONS, DIRECTION_MODES, LAYOUT_DESCRIPTIONS, LAYOUT_STYLES, MESSAGES, THEME_MODES } from "../src/CONF.js";
 import { analyzeAndVisualize } from "../src/main.js";
 
 const require = createRequire(import.meta.url);
@@ -58,11 +58,11 @@ program
     (value) => parseInt(value, 10),
     DEFAULT_CLI_OPTIONS.depth
   )
-  .option(
-    "--hidden",
-    "Include hidden files and folders (e.g. .git, node_modules)",
-    DEFAULT_CLI_OPTIONS.hidden
-  )
+  // .option(
+  //   "--hidden",
+  //   "Include hidden files and folders (e.g. .git, node_modules) - TEMPORARILY DISABLED",
+  //   DEFAULT_CLI_OPTIONS.hidden
+  // )
   .option(
     "-l, --layout <style>",
     `Layout style for node positioning: ${Object.keys(LAYOUT_DESCRIPTIONS).join(', ')}`,
@@ -78,6 +78,48 @@ program
     DEFAULT_CLI_OPTIONS.layout
   )
   .option(
+    "-m, --mode <mode>",
+    `Theme mode: ${Object.values(THEME_MODES).join(', ')}`,
+    (value) => {
+      const validModes = Object.values(THEME_MODES);
+      if (!validModes.includes(value)) {
+        console.error(chalk.red(`Invalid theme mode: ${value}`));
+        console.error(chalk.yellow(`Valid options: ${validModes.join(', ')}`));
+        process.exit(1);
+      }
+      return value;
+    },
+    DEFAULT_CLI_OPTIONS.mode
+  )
+  .option(
+    "--direction <direction>",
+    `Chart flow direction: ${Object.values(DIRECTION_MODES).join(', ')} (vertical temporarily disabled)`,
+    (value) => {
+      const validDirections = Object.values(DIRECTION_MODES);
+      if (!validDirections.includes(value)) {
+        console.error(chalk.red(`Invalid direction: ${value}`));
+        console.error(chalk.yellow(`Valid options: ${validDirections.join(', ')}`));
+        console.error(chalk.gray(`Note: 'vertical' direction is temporarily disabled due to layout issues`));
+        process.exit(1);
+      }
+      return value;
+    },
+    DEFAULT_CLI_OPTIONS.direction
+  )
+  .option(
+    "--dir <direction>",
+    `Alias for --direction: ${Object.values(DIRECTION_MODES).join(', ')} (vertical temporarily disabled)`,
+    (value) => {
+      const validDirections = Object.values(DIRECTION_MODES);
+      if (!validDirections.includes(value)) {
+        console.error(chalk.red(`Invalid direction: ${value}`));
+        console.error(chalk.yellow(`Valid options: ${validDirections.join(', ')}`));
+        process.exit(1);
+      }
+      return value;
+    }
+  )
+  .option(
     "--list-layouts",
     "List all available layout styles with descriptions"
   )
@@ -88,9 +130,18 @@ program
       Object.entries(LAYOUT_DESCRIPTIONS).forEach(([style, description]) => {
         console.log(`  ${chalk.green.bold(style.padEnd(12))} ${description}`);
       });
+
+      console.log(chalk.cyan.bold("\nAvailable Directions:"));
+      Object.entries(DIRECTION_DESCRIPTIONS).forEach(([direction, description]) => {
+        console.log(`  ${chalk.green.bold(direction.padEnd(12))} ${description}`);
+      });
       console.log("");
       return;
     }
+
+    // Handle direction parameter (--dir takes precedence over --direction)
+    const finalDirection = options.dir || options.direction || DEFAULT_CLI_OPTIONS.direction;
+    options.direction = finalDirection;
 
     console.log(chalk.green.bold(MESSAGES.INITIALIZING));
     console.log(`${chalk.bold("Target Directory:")} ${path}`);
@@ -102,6 +153,8 @@ program
       `${chalk.bold("Include Hidden:")} ${options.hidden ? "Yes" : "No"}`
     );
     console.log(`${chalk.bold("Layout Style:")} ${options.layout} - ${LAYOUT_DESCRIPTIONS[options.layout]}`);
+    console.log(`${chalk.bold("Theme Mode:")} ${options.mode}`);
+    console.log(`${chalk.bold("Direction:")} ${options.direction} - ${DIRECTION_DESCRIPTIONS[options.direction]}`);
     console.log("");
 
     try {
