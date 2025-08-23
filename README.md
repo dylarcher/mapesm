@@ -40,7 +40,10 @@ visualize [path][options]
 
 - `-o, --output <file>`: Specify the output file name. (default: `"dependency-graph.svg"`)
 - `-d, --depth <level>`: Limit the analysis to a specific directory depth. (default: `Infinity`)
-- `--hidden`: Include hidden files and folders (those starting with a dot).
+- `-l, --layout <style>`: Layout style for node positioning: auto, circular, diagonal, linear, tree, grid
+- `-m, --mode <mode>`: Theme mode: light, dark, system, auto
+- `--direction <direction>` or `--dir <direction>`: Chart flow direction: horizontal *(vertical temporarily disabled)*
+- `--hidden`: Include hidden files and folders *(temporarily disabled due to performance issues)*
 - `-h, --help`: Display help for command.
 
 ### Examples
