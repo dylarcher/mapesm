@@ -33,6 +33,7 @@
     "test:theme": "echo \"Error: no output diagram theme tests specified\" && exit 1",
     "test:types": "echo \"Error: no test declaration type annotation tests specified\" && exit 1",
     "test:state": "c8 -- npm test",
+    "generate:demos": "node bin/generate-demos.js",
     "test:units": "echo \"Error: no unit test suites specified\" && exit 1",
     "test:entry": "echo \"Error: no command line interface entry target tests specified\" && exit 1"
   },
