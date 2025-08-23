@@ -126,8 +126,9 @@ const LAYOUT_ALGORITHMS = {
    * Automatic layout selection based on graph characteristics
    */
   auto: (hierarchy, maxDepth, contentWidth, direction = 'horizontal') => {
-    const totalNodes = hierarchy.descendants().length;
-    const leafNodes = hierarchy.leaves().length;
+    const descendants = hierarchy.descendants();
+    const totalNodes = descendants.length;
+    const leafNodes = descendants.filter(d => !d.children || d.children.length === 0).length;
     const aspectRatio = contentWidth / (maxDepth * 100);
     const branchingFactor = totalNodes / Math.max(maxDepth, 1);
 
