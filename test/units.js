@@ -12,6 +12,14 @@ import {
   testFindSourceFiles,
   testParseFilesAndBuildGraph
 } from './suites/consumer.test.js';
+import {
+  testDimensionStoreBasics,
+  testLayoutBounds,
+  testOverlapDetection,
+  testOverlapResolution,
+  testPositioningCallbacks,
+  testStoreClear
+} from './suites/dimension-store.test.js';
 import { testAnalyzeAndVisualize, testMainModuleExports } from './suites/main.test.js';
 import {
   testCreateBaseSVG,
@@ -113,6 +121,16 @@ describe('Service Layer Tests', () => {
   describe('Visualizer Service', () => {
     testGenerateSVG();
     testVisualizerIntegration();
+  });
+
+  // Dimension Store tests
+  describe('Dimension Store Service', () => {
+    testDimensionStoreBasics();
+    testOverlapDetection();
+    testPositioningCallbacks();
+    testLayoutBounds();
+    testStoreClear();
+    testOverlapResolution();
   });
 });
 
