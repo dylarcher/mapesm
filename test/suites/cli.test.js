@@ -64,8 +64,8 @@ export function testCliCommand() {
         assert.ok(stdout.includes('Initializing'), 'Should show initialization message');
         assert.ok(stdout.includes('Success') || stdout.includes('✔️'), 'Should show success message');
 
-        // Check if output file was created in tmp directory
-        const outputPath = 'tmp/test-cli-output.svg';
+        // Check if output file was created in .tmp directory
+        const outputPath = '.tmp/test-cli-output.svg';
         try {
           await fs.access(outputPath);
           console.log('CLI output file created successfully');
@@ -97,7 +97,7 @@ export function testCliCommand() {
 
         // Clean up
         try {
-          await fs.unlink('tmp/shallow-test.svg').catch(() => { });
+          await fs.unlink('.tmp/shallow-test.svg').catch(() => { });
         } catch { }
 
       } catch (error) {
@@ -122,7 +122,7 @@ export function testCliCommand() {
 
         // Clean up
         try {
-          await fs.unlink('tmp/hidden-test.svg').catch(() => { });
+          await fs.unlink('.tmp/hidden-test.svg').catch(() => { });
         } catch { }
 
       } catch (error) {
@@ -193,7 +193,7 @@ export function testCliEntry() {
 
 export function testCliIntegration() {
   describe('CLI Integration', () => {
-    test('should create tmp directory for output', async () => {
+    test('should create .tmp directory for output', async () => {
       const testDir = 'test/models/small-size-project';
 
       try {
@@ -201,15 +201,15 @@ export function testCliIntegration() {
 
         // Run CLI command
         await execAsync(`node bin/cli.js ${testDir} --output integration-test.svg`).catch(() => {
-          // Command may fail but should still create tmp directory
+          // Command may fail but should still create .tmp directory
         });
 
-        // Check if tmp directory exists (should be created by the CLI)
+        // Check if .tmp directory exists (should be created by the CLI)
         try {
-          const tmpStats = await fs.stat('tmp');
-          assert.ok(tmpStats.isDirectory(), 'Should create tmp directory');
+          const tmpStats = await fs.stat('.tmp');
+          assert.ok(tmpStats.isDirectory(), 'Should create .tmp directory');
         } catch {
-          console.log('tmp directory not created - may be expected in test environment');
+          console.log('.tmp directory not created - may be expected in test environment');
         }
 
       } catch (error) {

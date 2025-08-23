@@ -122,7 +122,7 @@ export function testParseFilesAndBuildGraph() {
     });
 
     test('should handle empty file list', async () => {
-      const result = await parseFilesAndBuildGraph([], '/tmp');
+      const result = await parseFilesAndBuildGraph([], '/.tmp');
 
       assert.ok(result.graph);
       assert.ok(result.graph.nodes instanceof Map);

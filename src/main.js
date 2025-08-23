@@ -1,7 +1,7 @@
 /**
  * @fileoverview Main orchestration module for the codebase visualizer.
  * Coordinates the entire analysis pipeline from file discovery through SVG generation.
- * Handles user feedback via spinners and manages output to the tmp/ directory.
+ * Handles user feedback via spinners and manages output to the .tmp/ directory.
  */
 
 import chalk from "chalk";
@@ -27,9 +27,9 @@ import {
  * 2. Dependency graph construction via TypeScript Compiler API
  * 3. Circular dependency detection using DFS algorithm
  * 4. SVG visualization generation
- * 5. Output file creation in tmp/ directory
+ * 5. Output file creation in .tmp/ directory
  *
- * Ensures all output is saved to tmp/ directory regardless of user input path.
+ * Ensures all output is saved to .tmp/ directory regardless of user input path.
  * Provides progress feedback via CLI spinners and detailed console output.
  *
  * @param {string} rootDir - The root directory to analyze
@@ -40,10 +40,10 @@ import {
  * @returns {Promise<void>} Promise that resolves when the analysis and visualization are complete
  */
 export async function analyzeAndVisualize(rootDir, options) {
-  // Ensure output goes to tmp/ directory
-  const outputPath = options.output.startsWith('tmp/')
+  // Ensure output goes to .tmp/ directory
+  const outputPath = options.output.startsWith('.tmp/')
     ? options.output
-    : path.join('tmp', path.basename(options.output));
+    : path.join('.tmp', path.basename(options.output));
 
   // Update options with the corrected path
   const updatedOptions = { ...options, output: outputPath };

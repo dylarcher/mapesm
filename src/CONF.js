@@ -520,7 +520,7 @@ export const DIRECTION_DESCRIPTIONS = {
  * @type {Object}
  */
 export const DEFAULT_CLI_OPTIONS = {
-  output: "tmp/dependency-graph.svg",
+  output: ".tmp/dependency-graph.svg",
   depth: Infinity,
   hidden: false,
   layout: LAYOUT_STYLES.AUTO,

@@ -19,7 +19,7 @@ export function testAnalyzeAndVisualize() {
     test('should handle invalid directory gracefully', async () => {
       const invalidDir = '/non/existent/directory';
       const options = {
-        output: 'tmp/test-output.svg',
+        output: '.tmp/test-output.svg',
         depth: 2,
         hidden: false
       };
@@ -33,10 +33,10 @@ export function testAnalyzeAndVisualize() {
       }
     });
 
-    test('should ensure output goes to tmp directory', async () => {
+    test('should ensure output goes to .tmp directory', async () => {
       const testDir = 'test/models/small-size-project';
       const options = {
-        output: 'test-output.svg',  // Note: not in tmp/
+        output: 'test-output.svg',  // Note: not in .tmp/
         depth: 2,
         hidden: false
       };
@@ -44,17 +44,17 @@ export function testAnalyzeAndVisualize() {
       try {
         await analyzeAndVisualize(testDir, options);
 
-        // Check that file was created in tmp/ directory
-        const expectedPath = path.join('tmp', path.basename(options.output));
+        // Check that file was created in .tmp/ directory
+        const expectedPath = path.join('.tmp', path.basename(options.output));
         const exists = await fs.access(expectedPath).then(() => true).catch(() => false);
-        assert.ok(exists, 'Output file should be created in tmp/ directory');
+        assert.ok(exists, 'Output file should be created in .tmp/ directory');
 
         // Clean up
         await fs.unlink(expectedPath).catch(() => { });
       } catch (error) {
         // Allow test to pass if it's just a file processing error
         // The main thing is testing the output path logic
-        if (!error.message.includes('tmp')) {
+        if (!error.message.includes('.tmp')) {
           throw error;
         }
       }

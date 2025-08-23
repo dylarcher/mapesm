@@ -33,14 +33,14 @@ program
  * Main command configuration with arguments and options.
  * Defines the primary command interface including:
  * - Optional path argument (defaults to current directory)
- * - Output file option (auto-saves to tmp/ directory)
+ * - Output file option (auto-saves to .tmp/ directory)
  * - Directory depth limit option
  * - Hidden files inclusion option
  * - Layout style selection option
  *
  * @param {string} [path="."] - The path to the directory to analyze
  * @param {Object} options - Command line options
- * @param {string} options.output - Output file name (saved to tmp/ directory)
+ * @param {string} options.output - Output file name (saved to .tmp/ directory)
  * @param {number} options.depth - Maximum directory depth to analyze
  * @param {boolean} options.hidden - Whether to include hidden files and folders
  * @param {string} options.layout - Layout style for node positioning
@@ -49,7 +49,7 @@ program
   .argument("[path]", "The path to the directory to analyze", ".")
   .option(
     "-o, --output <file>",
-    "Specify the output file name (will be saved to tmp/ directory)",
+    "Specify the output file name (will be saved to .tmp/ directory)",
     DEFAULT_CLI_OPTIONS.output
   )
   .option(

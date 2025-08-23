@@ -166,7 +166,7 @@ console.log(chalk.cyan(`📊 Successfully created: ${totalGenerated} examples`))
 if (errors > 0) {
   console.log(chalk.red(`❌ Failed to generate: ${errors} examples`));
 }
-console.log(chalk.yellow(`📁 All outputs saved to tmp/ directory with timestamp: ${timestamp}`));
+console.log(chalk.yellow(`📁 All outputs saved to .tmp/ directory with timestamp: ${timestamp}`));
 
 // Generate detailed summary report
 console.log(chalk.cyan('\n📋 Generation Summary:'));
