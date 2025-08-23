@@ -262,12 +262,7 @@ export function testOverlapResolution() {
 
     // Force an overlap by directly setting position
     const node2Data = { x: 102, y: 102, textContent: 'Node 2' };
-    store._nodes.set('node2', {
-      id: 'node2',
-      category: NODE_CATEGORIES.CONTEXTUAL,
-      buffer: OVERLAP_BUFFERS.TEXT_BUFFER,
-      ...node2Data
-    });
+    store.setNodeDimensions('node2', node2Data);
 
     // Manually resolve overlaps
     store.resolveOverlaps();
