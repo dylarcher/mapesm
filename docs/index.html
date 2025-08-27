@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en" itemscope itemtype="http://schema.org/WebApplication" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workspace Dependency Explorer</title>
+    <meta itemprop="name" content="Workspace Dependency Explorer">
+    <meta itemprop="description" content="An accessible, interactive tool to visualize file dependencies and utilization metrics within a workspace.">
+    
+    <style>
+        /* 1. CSS Variables & Theming (WCAG AA Compliant) */
+        :root {
+            --font-stack: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            --transition-speed: 0.3s;
+        }
+
+        /* Light Mode (Ensuring 4.5:1+ contrast) */
+        html[data-theme='light'] {
+            --color-bg-primary: #F9FAFB;
+            --color-bg-surface: #FFFFFF;
+            --color-border: #E5E7EB;
+            --color-text-primary: #111827;
+            --color-text-secondary: #4B5563;
+            --color-accent: #1D4ED8; /* Strong blue */
+            --color-accent-text: #FFFFFF;
+            --color-hover-bg: #F3F4F6;
+            
+            /* Visualization */
+            --color-node-bg: #DBEAFE;
+            --color-node-border: #60A5FA;
+            --color-connector: #9CA3AF;
+        }
+
+        /* Dark Mode (Ensuring 4.5:1+ contrast) */
+        html[data-theme='dark'] {
+            --color-bg-primary: #111827;
+            --color-bg-surface: #1F2937;
+            --color-border: #374151;
+            --color-text-primary: #F9FAFB;
+            --color-text-secondary: #9CA3AF;
+            --color-accent: #60A5FA; /* Lighter blue */
+            --color-accent-text: #111827;
+            --color-hover-bg: #374151;
+
+            /* Visualization */
+            --color-node-bg: #374151;
+            --color-node-border: #60A5FA;
+            --color-connector: #6B7280;
+        }
+
+        /* 2. Base Styles & Reset */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-stack);
+            background-color: var(--color-bg-primary);
+            color: var(--color-text-primary);
+            line-height: 1.6;
+            transition: background-color var(--transition-speed), color var(--transition-speed);
+        }
+
+        button {
+            cursor: pointer;
+            font: inherit;
+            color: inherit;
+            background: none;
+            border: none;
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--color-accent);
+            outline-offset: 2px;
+        }
+
+        /* 3. Layout */
+        .app-container {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 300px;
+            background-color: var(--color-bg-surface);
+            border-right: 1px solid var(--color-border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .main-content {
+            flex-grow: 1;
+            padding: 40px;
+            overflow-y: auto;
+            color: var(--color-text-secondary);
+        }
+
+        /* 4. Header & Theme Toggle */
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .app-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        #theme-toggle {
+            padding: 8px;
+            border-radius: 50%;
+        }
+
+        #theme-toggle:hover {
+            background-color: var(--color-hover-bg);
+        }
+
+        #theme-toggle svg {
+            display: block;
+            width: 20px;
+            height: 20px;
+            stroke: var(--color-text-primary);
+        }
+        
+        /* Icon visibility based on theme */
+        #icon-moon { display: none; }
+        html[data-theme='dark'] #icon-sun { display: none; }
+        html[data-theme='dark'] #icon-moon { display: block; }
+
+
+        /* 5. File Tree (role="tree") */
+        .tree-container {
+            overflow-y: auto;
+            padding: 16px 0;
+        }
+
+        .tree-view {
+            list-style: none;
+        }
+
+        .tree-item {
+            /* Focus is managed on the item for roving tabindex */
+            outline: none;
+        }
+
+        .tree-label {
+            display: flex;
+            align-items: center;
+            padding: 6px 10px;
+            margin: 2px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.1s;
+        }
+
+        /* Focused state (using tabindex=0 for Roving Tabindex) */
+        .tree-item[tabindex="0"] > .tree-label {
+             background-color: var(--color-hover-bg);
+        }
+
+        /* Selected state (aria-selected="true") */
+        .tree-item[aria-selected="true"] > .tree-label {
+            background-color: var(--color-accent);
+            color: var(--color-accent-text);
+            font-weight: 500;
+        }
+
+        .tree-icon, .tree-toggler {
+            width: 16px;
+            height: 16px;
+            margin-right: 8px;
+            flex-shrink: 0;
+            fill: currentColor;
+        }
+
+        .tree-toggler {
+            transition: transform var(--transition-speed);
+        }
+
+        /* Rotate toggler (defaults to down arrow) when closed */
+        [aria-expanded="false"] > .tree-label .tree-toggler {
+            transform: rotate(-90deg);
+        }
+
+        .tree-group {
+            list-style: none;
+            padding-left: 20px;
+            display: none; /* Hidden by default */
+        }
+
+        [aria-expanded="true"] > .tree-group {
+            display: block;
+        }
+
+        /* 6. Dependency Drawer (role="dialog") */
+        .drawer-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity var(--transition-speed), visibility var(--transition-speed);
+            z-index: 1000;
+        }
+
+        .drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 80vw;
+            max-width: 1400px;
+            height: 100%;
+            background-color: var(--color-bg-surface);
+            transform: translateX(100%);
+            transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1001;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .drawer.open {
+            transform: translateX(0);
+        }
+
+        .drawer-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .drawer-header {
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: var(--color-bg-primary);
+        }
+
+        .drawer-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        #drawer-close svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--color-text-primary);
+        }
+
+        .drawer-body {
+             flex-grow: 1;
+             display: flex;
+             flex-direction: column;
+             overflow: hidden;
+        }
+
+        /* 7. Metrics Dashboard */
+        .metrics-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .metric-card {
+            background-color: var(--color-bg-primary);
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--color-border);
+            min-width: 200px;
+        }
+
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--color-accent);
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            color: var(--color-text-secondary);
+        }
+
+        /* 8. Flow Diagram Visualization (SVG) */
+        .flow-diagram-container {
+            flex-grow: 1;
+            overflow: auto; /* Allows panning the diagram */
+            background-color: var(--color-bg-primary);
+            padding: 30px;
+        }
+
+        /* SVG Styles (Themed and inspired by examples) */
+        .flow-node rect {
+            fill: var(--color-node-bg);
+            stroke: var(--color-node-border);
+            stroke-width: 2;
+            rx: 8; /* Rounded corners */
+            transition: fill var(--transition-speed), stroke var(--transition-speed);
+        }
+
+        .flow-node.root rect {
+            fill: var(--color-accent);
+            stroke: var(--color-accent);
+        }
+
+        .flow-node text {
+            fill: var(--color-text-primary);
+            font-family: var(--font-stack);
+            font-size: 14px;
+            pointer-events: none;
+            transition: fill var(--transition-speed);
+        }
+
+         .flow-node.root text {
+            fill: var(--color-accent-text);
+            font-weight: bold;
+        }
+
+        .flow-connector {
+            stroke: var(--color-connector);
+            stroke-width: 2;
+            fill: none;
+            marker-end: url(#arrowhead);
+            transition: stroke var(--transition-speed);
+        }
+
+        /* 9. Responsiveness */
+        @media (max-width: 1024px) {
+            .drawer {
+                width: 95vw;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 260px;
+            }
+            .main-content {
+                padding: 20px;
+            }
+            .metrics-container {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container" role="application" aria-label="Workspace Explorer">
+        
+        <!-- Sidebar: File Tree View -->
+        <aside class="sidebar" aria-label="File navigation">
+            <header class="app-header">
+                <h1 class="app-title">Workspace</h1>
+                <button id="theme-toggle" aria-label="Toggle light and dark mode" title="Toggle Theme">
+                    <!-- Sun icon (Light Mode) -->
+                    <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                    <!-- Moon icon (Dark Mode) -->
+                    <svg id="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                </button>
+            </header>
+            
+            <nav id="tree-container" class="tree-container">
+                <ul id="file-tree-root" class="tree-view" role="tree" aria-label="Workspace Files" aria-multiselectable="false">
+                    <!-- File tree generated by JavaScript -->
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <h2>Dependency Explorer</h2>
+            <p>Select a file from the navigation tree to analyze its utilization flow, implementation techniques, and usage metrics.</p>
+        </main>
+
+    </div>
+
+    <!-- Slide-out Drawer -->
+    <div id="drawer-overlay" class="drawer-overlay" role="presentation"></div>
+    <section id="dependency-drawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true">
+        <header class="drawer-header">
+            <h2 id="drawer-title" class="drawer-title">Dependency Details</h2>
+            <button id="drawer-close" aria-label="Close details panel (Escape)">
+                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </header>
+        <div class="drawer-body">
+            <!-- Metrics Section -->
+            <section aria-label="File Metrics" class="metrics-container" id="metrics-container">
+                <!-- Metrics generated by JavaScript -->
+            </section>
+            
+            <!-- Flow Diagram Section -->
+            <section aria-label="Dependency Flow Diagram" class="flow-diagram-container">
+                <svg id="flow-diagram" xmlns="http://www.w3.org/2000/svg">
+                     <defs>
+                        <!-- Arrowhead definition for connectors (color managed by CSS variable) -->
+                        <marker id="arrowhead" markerWidth="10" markerHeight="7"
+                        refX="9" refY="3.5" orient="auto">
+                          <polygon points="0 0, 10 3.5, 0 7" fill="var(--color-connector)" />
+                        </marker>
+                      </defs>
+                    <!-- SVG content generated by JavaScript -->
+                </svg>
+            </section>
+        </div>
+    </section>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // --- 1. Mock Data Structures ---
+            // Simulates data gathered from analyzing the workspace root.
+
+            const fileStructure = [
+                {
+                    type: 'folder', name: 'src', children: [
+                        {
+                            type: 'folder', name: 'components', children: [
+                                { type: 'file', name: 'Button.js' },
+                                { type: 'file', name: 'Modal.js' },
+                                { type: 'file', name: 'Card.js' },
+                                { type: 'file', name: 'FormInput.js' },
+                            ]
+                        },
+                        {
+                            type: 'folder', name: 'pages', children: [
+                                { type: 'file', name: 'SettingsPage.js' },
+                                { type: 'file', name: 'Dashboard.js' },
+                            ]
+                        },
+                         {
+                            type: 'folder', name: 'utils', children: [
+                                { type: 'file', name: 'helpers.js' },
+                            ]
+                        },
+                        { type: 'file', name: 'App.js' },
+                    ]
+                },
+                { type: 'file', name: 'package.json' },
+            ];
+
+            // Represents which files utilize (import) the key file.
+            const utilizedByGraph = {
+                'Button.js': { utilizedBy: ['Modal.js', 'Card.js', 'FormInput.js'], technique: 'Functional Component (Hooks)' },
+                'Modal.js': { utilizedBy: ['SettingsPage.js'], technique: 'Class Component' },
+                'Card.js': { utilizedBy: ['Dashboard.js'], technique: 'Functional Component' },
+                'FormInput.js': { utilizedBy: ['SettingsPage.js', 'Dashboard.js'], technique: 'Controlled Component' },
+                'SettingsPage.js': { utilizedBy: ['App.js'], technique: 'Page Component' },
+                'Dashboard.js': { utilizedBy: ['App.js'], technique: 'Page Component' },
+                'App.js': { utilizedBy: ['index.js'], technique: 'Root Application' },
+                'helpers.js': { utilizedBy: ['Button.js', 'Modal.js', 'App.js'], technique: 'Utility Library' },
+                'package.json': { utilizedBy: ['Build System'], technique: 'Configuration'}
+            };
+
+            // --- 2. DOM Elements ---
+            const treeRoot = document.getElementById('file-tree-root');
+            const drawer = document.getElementById('dependency-drawer');
+            const drawerOverlay = document.getElementById('drawer-overlay');
+            const drawerClose = document.getElementById('drawer-close');
+            const drawerTitle = document.getElementById('drawer-title');
+            const metricsContainer = document.getElementById('metrics-container');
+            const flowDiagram = document.getElementById('flow-diagram');
+            const themeToggle = document.getElementById('theme-toggle');
+
+            let elementFocusedBeforeDrawer = null;
+            let treeItems = []; // Store references for keyboard navigation
+
+            // --- 3. Theme Management ---
+            
+            function applyTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+            }
+
+            themeToggle.addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+            });
+
+            // Initialize theme based on preference or saved setting
+            const preferredTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            const savedTheme = localStorage.getItem('theme') || preferredTheme;
+            applyTheme(savedTheme);
+
+
+            // --- 4. File Tree Generation ---
+
+            // SVG Icon Helpers
+            const createIcon = (type) => {
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                svg.setAttribute("viewBox", "0 0 24 24");
+                svg.setAttribute("aria-hidden", "true");
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+
+                if (type === 'toggler') {
+                    path.setAttribute("d", "M7 10l5 5 5-5z"); // Down arrow
+                    svg.classList.add("tree-toggler");
+                } else if (type === 'file') {
+                     path.setAttribute("d", "M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z");
+                     svg.classList.add("tree-icon");
+                } else if (type === 'folder') {
+                     path.setAttribute("d", "M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z");
+                     svg.classList.add("tree-icon");
+                }
+                
+                svg.appendChild(path);
+                return svg;
+            };
+
+            function generateTree(data, parentElement, level = 0) {
+                data.forEach((item, index) => {
+                    const li = document.createElement('li');
+                    li.className = 'tree-item';
+                    li.setAttribute('role', 'treeitem');
+                    // Initialize tabindex for roving tabindex management
+                    // Only the very first item in the entire tree starts with 0.
+                    li.setAttribute('tabindex', treeItems.length === 0 ? 0 : -1); 
+                    treeItems.push(li);
+
+                    const label = document.createElement('div');
+                    label.className = 'tree-label';
+                    
+                    if (item.type === 'folder') {
+                        li.setAttribute('aria-expanded', 'false');
+                        
+                        label.appendChild(createIcon('toggler'));
+                        label.appendChild(createIcon('folder'));
+                        label.append(item.name);
+                        li.appendChild(label);
+
+                        const group = document.createElement('ul');
+                        group.className = 'tree-group';
+                        group.setAttribute('role', 'group');
+                        
+                        if (item.children && item.children.length > 0) {
+                            generateTree(item.children, group, level + 1);
+                        }
+                        li.appendChild(group);
+
+                        label.addEventListener('click', () => {
+                            toggleFolder(li);
+                            setFocusToItem(li);
+                        });
+
+                    } else if (item.type === 'file') {
+                        // Spacer for alignment (width of toggler)
+                        const spacer = document.createElement('span');
+                        spacer.style.width = '16px';
+                        spacer.style.marginRight = '8px';
+                        spacer.style.flexShrink = '0';
+
+                        label.appendChild(spacer);
+                        label.appendChild(createIcon('file'));
+                        label.append(item.name);
+                        li.appendChild(label);
+
+                        label.addEventListener('click', () => {
+                            selectFile(item.name, li);
+                            setFocusToItem(li);
+                        });
+                    }
+                    parentElement.appendChild(li);
+                });
+            }
+
+            function toggleFolder(item) {
+                const isExpanded = item.getAttribute('aria-expanded') === 'true';
+                item.setAttribute('aria-expanded', !isExpanded);
+            }
+
+            function selectFile(fileName, item) {
+                // Update selection state
+                treeItems.forEach(el => el.setAttribute('aria-selected', "false"));
+                item.setAttribute('aria-selected', "true");
+                openDrawer(fileName);
+            }
+
+            // Initialize the tree
+            generateTree(fileStructure, treeRoot);
+
+            // --- 5. Keyboard Navigation (Roving Tabindex - WCAG Compliant) ---
+
+            // Helper to manage focus within the tree
+            function setFocusToItem(item) {
+                treeItems.forEach(el => el.setAttribute('tabindex', -1));
+                item.setAttribute('tabindex', 0);
+                item.focus();
+            }
+
+            // Helper to get currently visible items (respecting collapsed folders)
+            function getVisibleItems() {
+                return treeItems.filter(item => {
+                    let parent = item.parentElement;
+                    // Traverse up the DOM
+                    while (parent && parent !== treeRoot) {
+                        // If the item is inside a group...
+                        if (parent.classList.contains('tree-group')) {
+                            // Find the folder associated with that group
+                            const parentFolder = parent.closest('.tree-item[role="treeitem"]');
+                            // If the folder is collapsed, the item is not visible
+                            if (parentFolder && parentFolder.getAttribute('aria-expanded') === 'false') {
+                                return false;
+                            }
+                        }
+                        parent = parent.parentElement;
+                    }
+                    return true;
+                });
+            }
+
+            treeRoot.addEventListener('keydown', (event) => {
+                const target = event.target;
+                if (!target.matches('.tree-item')) return;
+
+                const visibleItems = getVisibleItems();
+                const currentIndex = visibleItems.indexOf(target);
+
+                switch (event.key) {
+                    case 'ArrowDown':
+                        event.preventDefault();
+                        if (currentIndex < visibleItems.length - 1) {
+                            setFocusToItem(visibleItems[currentIndex + 1]);
+                        }
+                        break;
+                    case 'ArrowUp':
+                        event.preventDefault();
+                        if (currentIndex > 0) {
+                            setFocusToItem(visibleItems[currentIndex - 1]);
+                        }
+                        break;
+                    case 'ArrowRight':
+                        event.preventDefault();
+                        if (target.getAttribute('aria-expanded') === 'false') {
+                            toggleFolder(target);
+                        } else if (target.getAttribute('aria-expanded') === 'true') {
+                            // Move focus to the first child if expanded
+                             if (currentIndex < visibleItems.length - 1) {
+                                setFocusToItem(visibleItems[currentIndex + 1]);
+                            }
+                        }
+                        break;
+                    case 'ArrowLeft':
+                        event.preventDefault();
+                        if (target.getAttribute('aria-expanded') === 'true') {
+                            toggleFolder(target);
+                        } else {
+                            // Move focus to the parent folder
+                            const parentGroup = target.closest('.tree-group');
+                            if (parentGroup) {
+                                const parentFolder = parentGroup.closest('.tree-item');
+                                if (parentFolder) {
+                                     setFocusToItem(parentFolder);
+                                }
+                            }
+                        }
+                        break;
+                    case 'Enter':
+                    case ' ':
+                        event.preventDefault();
+                        // Trigger the click event on the label
+                        target.querySelector('.tree-label').click();
+                        break;
+                    case 'Home':
+                        event.preventDefault();
+                        if (visibleItems.length > 0) setFocusToItem(visibleItems[0]);
+                        break;
+                    case 'End':
+                        event.preventDefault();
+                        if (visibleItems.length > 0) setFocusToItem(visibleItems[visibleItems.length - 1]);
+                        break;
+                }
+            });
+
+
+            // --- 6. Drawer Functionality & Accessibility (Focus Trap) ---
+
+            function openDrawer(fileName) {
+                // Store the element that opened the drawer to return focus later
+                elementFocusedBeforeDrawer = document.activeElement;
+
+                drawerTitle.textContent = `Utilization Flow: ${fileName}`;
+                
+                // Load and display data
+                visualizeDependencies(fileName);
+
+                drawer.setAttribute('aria-hidden', 'false');
+                drawer.classList.add('open');
+                drawerOverlay.classList.add('visible');
+                
+                // Focus management
+                drawerClose.focus();
+                document.addEventListener('keydown', handleDrawerKeydown);
+            }
+
+            function closeDrawer() {
+                drawer.classList.remove('open');
+                drawerOverlay.classList.remove('visible');
+                drawer.setAttribute('aria-hidden', 'true');
+
+                // Return focus
+                if (elementFocusedBeforeDrawer) {
+                    elementFocusedBeforeDrawer.focus();
+                }
+                document.removeEventListener('keydown', handleDrawerKeydown);
+            }
+
+            drawerClose.addEventListener('click', closeDrawer);
+            drawerOverlay.addEventListener('click', closeDrawer);
+
+            // Handle Escape key and Focus Trapping (WCAG requirement)
+            const handleDrawerKeydown = (e) => {
+                if (e.key === 'Escape') {
+                    closeDrawer();
+                }
+                
+                // Focus trapping logic
+                if (e.key === 'Tab') {
+                    const focusableElements = drawer.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+                    // In this implementation, only the close button is focusable within the drawer.
+                    const firstElement = focusableElements[0];
+                    const lastElement = focusableElements[focusableElements.length - 1];
+
+                    if (e.shiftKey && document.activeElement === firstElement) {
+                        lastElement.focus();
+                        e.preventDefault();
+                    } else if (!e.shiftKey && document.activeElement === lastElement) {
+                        firstElement.focus();
+                        e.preventDefault();
+                    }
+                }
+            };
+
+            // --- 7. Dependency Visualization (Metrics and Flow Diagram) ---
+
+            function visualizeDependencies(fileName) {
+                const data = utilizedByGraph[fileName];
+                
+                // Clear previous content (keep SVG defs)
+                metricsContainer.innerHTML = '';
+                const defs = flowDiagram.querySelector('defs');
+                flowDiagram.innerHTML = '';
+                if (defs) flowDiagram.appendChild(defs);
+
+
+                if (!data) {
+                    metricsContainer.innerHTML = `<p style="padding: 20px;">No dependency data found for ${fileName}.</p>`;
+                    return;
+                }
+
+                // Analyze the graph to calculate metrics and layout
+                // We use Breadth-First Search (BFS) for analysis.
+                const analysis = analyzeGraph(fileName);
+
+                // Populate Metrics
+                const metrics = {
+                    'Total Utilizations': analysis.totalUtilization,
+                    'Max Depth Level': analysis.maxDepth,
+                    'Implementation Technique': data.technique,
+                    'Direct Dependents': data.utilizedBy.length
+                };
+
+                Object.entries(metrics).forEach(([key, value]) => {
+                    const card = document.createElement('div');
+                    card.className = 'metric-card';
+                    // Adjust font size for long text values
+                    const valueStyle = typeof value === 'string' && value.length > 15 ? 'style="font-size: 1.1rem;"' : '';
+                    card.innerHTML = `
+                        <div class="metric-value" ${valueStyle}>${value}</div>
+                        <div class="metric-label">${key}</div>
+                    `;
+                    metricsContainer.appendChild(card);
+                });
+
+                // Generate Flow Diagram using the analyzed layout
+                generateFlowDiagram(analysis.layout);
+            }
+
+            // Analyze the dependency graph using Breadth-First Search (BFS)
+            function analyzeGraph(startNode) {
+                const levels = {}; // Stores nodes grouped by depth
+                const connections = [];
+                let totalUtilization = 0;
+                let maxDepth = 0;
+
+                // BFS initialization
+                const queue = [{ name: startNode, depth: 0 }];
+                const visited = {}; 
+
+                while (queue.length > 0) {
+                    const { name, depth } = queue.shift();
+                    
+                    // Handle cycles and reuse: only process the first time a node is encountered
+                    if (visited[name]) continue; 
+                    visited[name] = true;
+
+                    // Organize by level (depth)
+                    if (!levels[depth]) levels[depth] = [];
+                    levels[depth].push({ name, depth });
+
+                    // Update metrics
+                    if (depth > maxDepth) maxDepth = depth;
+                    if (depth > 0) totalUtilization++; // Count utilization instances
+
+                    // Find utilizers (parents) and add to queue
+                    const data = utilizedByGraph[name];
+                    if (data && data.utilizedBy && data.utilizedBy.length > 0) {
+                        data.utilizedBy.forEach(utilizer => {
+                            connections.push({ source: name, target: utilizer });
+                            // Only enqueue if not visited (prevents infinite loops)
+                            if (!visited[utilizer]) {
+                                 queue.push({ name: utilizer, depth: depth + 1 });
+                            }
+                        });
+                    }
+                }
+
+                return { totalUtilization, maxDepth, layout: { levels, connections } };
+            }
+
+
+            function generateFlowDiagram(layout) {
+                const svgNS = "http://www.w3.org/2000/svg";
+                // Configuration constants
+                const nodeWidth = 160;
+                const nodeHeight = 50;
+                const horizontalSpacing = 120; // Space between levels (X axis)
+                const verticalSpacing = 30;   // Space between nodes in the same level (Y axis)
+                const padding = 50; // Padding around the diagram
+
+                const { levels, connections } = layout;
+                const nodePositions = {};
+
+                // 1. Calculate required SVG dimensions
+                const maxDepth = Object.keys(levels).length - 1;
+                
+                let maxHeight = 0;
+                Object.values(levels).forEach(depthNodes => {
+                    const height = depthNodes.length * (nodeHeight + verticalSpacing) - verticalSpacing;
+                    if (height > maxHeight) maxHeight = height;
+                });
+                
+                // Calculate initial positions (centered vertically relative to maxHeight)
+                Object.keys(levels).forEach(depthKey => {
+                    const depth = parseInt(depthKey);
+                    const depthNodes = levels[depthKey];
+                    const levelHeight = depthNodes.length * (nodeHeight + verticalSpacing) - verticalSpacing;
+                    
+                    // Calculate starting X based on depth
+                    const startX = depth * (nodeWidth + horizontalSpacing);
+                    // Calculate starting Y (centered)
+                    const startY = (maxHeight - levelHeight) / 2;
+                    
+                    depthNodes.forEach((node, index) => {
+                        const x = startX;
+                        const y = startY + index * (nodeHeight + verticalSpacing);
+                        nodePositions[node.name] = { x, y, depth: node.depth };
+                    });
+                });
+
+                // 2. Draw Connections (Curved Paths)
+                // Drawn first so they appear behind nodes
+                connections.forEach(conn => {
+                    const sourcePos = nodePositions[conn.source];
+                    const targetPos = nodePositions[conn.target];
+
+                    if (sourcePos && targetPos) {
+                        // Start (Right edge of source)
+                        const startX = sourcePos.x + nodeWidth;
+                        const startY = sourcePos.y + nodeHeight / 2;
+                        // End (Left edge of target)
+                        const endX = targetPos.x;
+                        const endY = targetPos.y + nodeHeight / 2;
+
+                        // Bezier curve control points (for smooth flow)
+                        const controlX1 = startX + horizontalSpacing / 2;
+                        const controlX2 = endX - horizontalSpacing / 2;
+
+                        const pathD = `M ${startX} ${startY} C ${controlX1} ${startY}, ${controlX2} ${endY}, ${endX} ${endY}`;
+
+                        const path = document.createElementNS(svgNS, "path");
+                        path.setAttribute("d", pathD);
+                        path.setAttribute("class", "flow-connector");
+                        flowDiagram.appendChild(path);
+                    }
+                });
+
+
+                // 3. Draw Nodes
+                Object.entries(nodePositions).forEach(([name, pos]) => {
+                    const group = document.createElementNS(svgNS, "g");
+                    // Depth 0 is the root (selected file)
+                    group.setAttribute("class", `flow-node ${pos.depth === 0 ? 'root' : ''}`);
+                    group.setAttribute("transform", `translate(${pos.x}, ${pos.y})`);
+
+                    const rect = document.createElementNS(svgNS, "rect");
+                    rect.setAttribute("width", nodeWidth);
+                    rect.setAttribute("height", nodeHeight);
+                    
+                    const text = document.createElementNS(svgNS, "text");
+                    // Truncate long names
+                    text.textContent = name.length > 20 ? name.substring(0, 17) + '...' : name;
+                    text.setAttribute("x", nodeWidth / 2);
+                    text.setAttribute("y", nodeHeight / 2);
+                    text.setAttribute("dominant-baseline", "middle");
+                    text.setAttribute("text-anchor", "middle");
+
+                    group.appendChild(rect);
+                    group.appendChild(text);
+                    flowDiagram.appendChild(group);
+                });
+
+                // 4. Adjust SVG ViewBox to fit content
+                const bounds = flowDiagram.getBBox();
+                if (bounds.width > 0 && bounds.height > 0) {
+                     flowDiagram.setAttribute('viewBox', `${bounds.x - padding} ${bounds.y - padding} ${bounds.width + padding * 2} ${bounds.height + padding * 2}`);
+                }
+               
+            }
+        });
+    </script>
+</body>
+</html>
+
